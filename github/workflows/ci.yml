@@ -29,7 +29,7 @@ jobs:
   # -----------------------------
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:15
@@ -44,6 +44,7 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -52,7 +53,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
+          distribution: temurin
           cache: gradle
 
       - name: Setup Gradle
@@ -84,10 +85,10 @@ jobs:
           SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
           SPRING_DATASOURCE_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
 
-      - name: Build Application
+      - name: Build Spring Boot JAR
         run: ./gradlew bootJar -x test --no-daemon
 
-      - name: Upload Build Artifacts
+      - name: Upload JAR Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: jar-artifacts-${{ github.run_number }}
@@ -102,11 +103,12 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push'
     timeout-minutes: 15
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download JAR artifacts
+      - name: Download JAR Artifacts
         uses: actions/download-artifact@v4
         with:
           name: jar-artifacts-${{ github.run_number }}
@@ -118,15 +120,14 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
-          username: godfrey10
-          password: godfreygrace10
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=commit-
@@ -137,7 +138,7 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
-      - name: Build and push Docker image
+      - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -165,8 +166,8 @@ jobs:
       - name: Deploy to Development
         run: |
           echo "🚀 Deploying development..."
-          echo "Using Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          # Example: docker-compose -f docker-compose.dev.yml up -d
+          echo "Using Docker image: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          # docker-compose -f docker-compose.dev.yml up -d
           echo "✅ Development deployment completed"
 
   # -----------------------------
@@ -185,8 +186,8 @@ jobs:
       - name: Deploy to Production
         run: |
           echo "🚀 Deploying production..."
-          echo "Using Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
-          # Example: docker-compose -f docker-compose.prod.yml up -d
+          echo "Using Docker image: ${{ env.REGISTRY }}/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest"
+          # docker-compose -f docker-compose.prod.yml up -d
           echo "✅ Production deployment completed"
 
   # -----------------------------
@@ -197,10 +198,8 @@ jobs:
     needs: [build-and-test, build-docker, deploy-dev, deploy-prod]
     if: always()
     steps:
-      - name: Clean up artifacts
-        run: |
-          echo "🧹 Cleaning up temporary artifacts..."
-          echo "✅ Cleanup completed"
+      - name: Cleanup
+        run: echo "🧹 Cleanup completed"
 
   # -----------------------------
   # 6. Notifications
@@ -210,7 +209,7 @@ jobs:
     needs: [deploy-dev, deploy-prod, cleanup]
     if: always()
     steps:
-      - name: Notify Deployment Status
+      - name: Notify Pipeline Status
         run: |
           echo "📊 Pipeline Results:"
           if [[ "${{ needs.deploy-prod.result }}" == "success" ]]; then
