@@ -1,0 +1,19 @@
+# ===============================
+# Dockerfile.simple
+# ===============================
+
+FROM openjdk:17-jdk-slim
+
+WORKDIR /app
+
+# Copy JAR from build/libs (downloaded by CI)
+COPY build/libs/*.jar /app/app.jar
+
+# Expose service port (match application.yml or compose)
+EXPOSE 8081
+
+ENV TZ=UTC \
+    LANG=C.UTF-8 \
+    JAVA_OPTS=""
+
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
