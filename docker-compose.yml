@@ -141,7 +141,7 @@ services:
 
   # User Service Application
   user-service:
-    image: docker.io/godfrey10/user-service:latest  # use CI/CD pushed image
+    image: godfrey10/user-service:latest  # use CI/CD pushed image
     container_name: user-service-app
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-service:5432/user-service
