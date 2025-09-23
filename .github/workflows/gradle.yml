@@ -121,33 +121,28 @@ jobs:
   # -----------------------------
   # 3. Deploy using Docker Compose
   # -----------------------------
-  deploy:
+
+  # 3. Deploy Staging
+  # -----------------------------
+  deploy-staging:
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+    environment: staging
+    timeout-minutes: 8
+
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker CLI
-        uses: docker/setup-docker@v3
-        with:
-          version: 24.0.5
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: godfrey10
-          password: godfreygrace10
-
-      - name: Pull latest images
-        run: docker compose -f docker-compose.yml pull
-
-      - name: Deploy containers
-        run: docker compose -f docker-compose.yml up -d --remove-orphans
-
-      - name: Verify deployment
+      - name: Deploy Staging
         run: |
-          docker ps
-          docker logs user-service-app --tail 20
+          docker pull docker.io/${{ env.IMAGE_NAME }}:latest
+          
+          docker stop userservice-staging 2>/dev/null || true
+          docker rm userservice-staging 2>/dev/null || true
+          
+          docker run -d --name userservice-staging \
+            -p 8083:8083 \
+            -e SPRING_PROFILES_ACTIVE=staging \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5433/user-service \
+            -e SPRING_DATASOURCE_USERNAME=postgres \
+            -e SPRING_DATASOURCE_PASSWORD=Server123@ \
+              docker.io/${{ env.IMAGE_NAME }}:latest
