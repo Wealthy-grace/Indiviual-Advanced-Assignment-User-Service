@@ -30,7 +30,7 @@ jobs:
   # -----------------------------
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -42,7 +42,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d user-service"
+          --health-cmd="pg_isready -U postgres -d ${{ env.POSTGRES_DB }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -50,18 +50,13 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
+          distribution: temurin
           cache: gradle
-
-      - name: Setup Gradle
-        uses: gradle/gradle-build-action@v3
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
@@ -106,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.event_name == 'push'
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -145,6 +140,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-docker
     if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -159,12 +155,10 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Pull latest images
-        run: |
-          docker-compose -f docker-compose.yml pull
+        run: docker-compose -f docker-compose.yml pull
 
       - name: Deploy containers
-        run: |
-          docker-compose -f docker-compose.yml up -d --remove-orphans
+        run: docker-compose -f docker-compose.yml up -d --remove-orphans
 
       - name: Verify deployment
         run: |
