@@ -1,0 +1,15 @@
+-- -- V2__create_users_with_role_mediator.sql
+--
+-- ALTER TABLE users
+-- DROP CONSTRAINT IF EXISTS users_role_check;
+--
+-- ALTER TABLE users
+--     ADD CONSTRAINT users_role_check
+--     id BIGSERIAL PRIMARY KEY,
+--                                      username VARCHAR(255) NOT NULL UNIQUE,
+--     password VARCHAR(255) NOT NULL,
+--     enabled BOOLEAN DEFAULT TRUE,
+--     email VARCHAR(255),
+--     full_name VARCHAR(255),
+--     image VARCHAR(255),
+--         CHECK (role IN ('ROLE_ADMIN', 'ROLE_USER', 'ROLE_MEDIATOR'));
