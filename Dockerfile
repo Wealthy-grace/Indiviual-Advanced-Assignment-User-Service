@@ -1,30 +1,35 @@
-# Simple Dockerfile for pre-built JAR (recommended for CI/CD)
+# ===============================
+# Stage 1: Build using Gradle
+# ===============================
+FROM gradle:8.5-jdk17 AS build
+
+# Set working directory inside the container
+WORKDIR /home/gradle/src
+
+# Copy everything into the container (with correct permissions)
+COPY --chown=gradle:gradle . .
+
+# Build the Spring Boot JAR (skip tests to speed up build)
+RUN gradle --no-daemon clean build -x test
+
+# ===============================
+# Stage 2: Run the Spring Boot JAR
+# ===============================
 FROM openjdk:17-jdk-slim
-
-# Install curl for health checks
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Set working directory
 WORKDIR /app
 
-# Copy the pre-built JAR file
-COPY build/libs/*.jar app.jar
+# Copy only the built JAR file from the build stage
+COPY --from=build /home/gradle/src/build/libs/*.jar /app/app.jar
 
-# Change ownership to appuser
-RUN chown appuser:appuser app.jar
+# Expose application port
+EXPOSE 8083
 
-# Switch to non-root user
-USER appuser
+# Set environment variables (timezone + locale)
+ENV TZ=UTC \
+    LANG=C.UTF-8 \
+    JAVA_OPTS=""
 
-# Expose port
-EXPOSE 8081
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8081/actuator/health || exit 1
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the JAR file
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]
