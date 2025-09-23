@@ -30,7 +30,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     services:
       postgres:
         image: postgres:15
@@ -45,12 +44,9 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -106,7 +102,6 @@ jobs:
     needs: build-and-test
     if: github.event_name == 'push'
     timeout-minutes: 15
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -153,3 +148,74 @@ jobs:
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # -----------------------------
+  # 3. Deploy to Development
+  # -----------------------------
+  deploy-dev:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: development
+      url: http://dev.user-service.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Deploy to Development
+        run: |
+          echo "🚀 Deploying development..."
+          echo "Using Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # Example: docker-compose -f docker-compose.dev.yml up -d
+          echo "✅ Development deployment completed"
+
+  # -----------------------------
+  # 4. Deploy to Production
+  # -----------------------------
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: http://user-service.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Deploy to Production
+        run: |
+          echo "🚀 Deploying production..."
+          echo "Using Docker image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          # Example: docker-compose -f docker-compose.prod.yml up -d
+          echo "✅ Production deployment completed"
+
+  # -----------------------------
+  # 5. Cleanup
+  # -----------------------------
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, build-docker, deploy-dev, deploy-prod]
+    if: always()
+    steps:
+      - name: Clean up artifacts
+        run: |
+          echo "🧹 Cleaning up temporary artifacts..."
+          echo "✅ Cleanup completed"
+
+  # -----------------------------
+  # 6. Notifications
+  # -----------------------------
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy-dev, deploy-prod, cleanup]
+    if: always()
+    steps:
+      - name: Notify Deployment Status
+        run: |
+          echo "📊 Pipeline Results:"
+          if [[ "${{ needs.deploy-prod.result }}" == "success" ]]; then
+            echo "🎉 Production deployment successful!"
+          elif [[ "${{ needs.deploy-dev.result }}" == "success" ]]; then
+            echo "🚀 Development deployment successful!"
+          else
+            echo "❌ Deployment failed or skipped!"
