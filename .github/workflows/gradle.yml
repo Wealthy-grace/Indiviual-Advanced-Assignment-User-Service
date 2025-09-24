@@ -528,3 +528,21 @@ jobs:
           # - Monitoring dashboards
           # - Service catalogs
           # - Change management systems
+          
+          # -----------------------------
+          # 6. Notifications
+          # -----------------------------
+          notify:
+            runs-on: ubuntu-latest
+            needs: [ deploy-staging, deploy-production, cleanup ]
+            if: always()
+            steps:
+              - name: Notify Deployment
+                run: |
+                  if [[ "${{ needs.deploy-production.result }}" == "success" ]]; then
+                    echo "🎉 Production deployment successful!"
+                  elif [[ "${{ needs.deploy-staging.result }}" == "success" ]]; then
+                    echo "🚀 Staging deployment successful!"
+                  else
+                    echo "⚠️ Deployment failed!"
+                  fi
