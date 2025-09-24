@@ -148,6 +148,9 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
       - name: Run SpotBugs
         run: ./gradlew spotbugsMain --no-daemon
 
