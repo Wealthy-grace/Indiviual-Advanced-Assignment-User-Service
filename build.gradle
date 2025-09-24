@@ -1,73 +1,7 @@
-plugins {
-    id 'java'
-    id 'org.springframework.boot' version '3.5.6'
-    id 'io.spring.dependency-management' version '1.1.7'
-}
-
-group = 'com.example'
-version = '0.0.1-SNAPSHOT'
-description = 'User-Service'
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(17)
-    }
-}
-
-configurations {
-    compileOnly {
-        extendsFrom annotationProcessor
-    }
-}
-
-repositories {
-    mavenCentral()
-}
-
-dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-web'
-    compileOnly 'org.projectlombok:lombok'
-    runtimeOnly 'org.postgresql:postgresql'
-    annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation 'org.springframework.security:spring-security-test'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    developmentOnly 'org.springframework.boot:spring-boot-devtools'
-
-    implementation 'org.flywaydb:flyway-database-postgresql'
-    implementation 'org.flywaydb:flyway-core:latest.release'
-
-
-    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
-
-
-    // test
-
-//    testImplementation 'org.mockito:mockito-core'
-//    testImplementation 'org.mockito:mockito-junit-jupiter'
-    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
-}
-
-
-//// user-date
 //plugins {
 //    id 'java'
 //    id 'org.springframework.boot' version '3.5.6'
 //    id 'io.spring.dependency-management' version '1.1.7'
-//    id 'jacoco'
-//    id 'checkstyle'
-//    id 'com.github.spotbugs' version '6.0.7'
 //}
 //
 //group = 'com.example'
@@ -91,219 +25,285 @@ tasks.named('test') {
 //}
 //
 //dependencies {
-//    // Spring Boot Starters
 //    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 //    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
 //    implementation 'org.springframework.boot:spring-boot-starter-security'
 //    implementation 'org.springframework.boot:spring-boot-starter-validation'
 //    implementation 'org.springframework.boot:spring-boot-starter-web'
-//    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-//    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-//
-//    // Development
+//    compileOnly 'org.projectlombok:lombok'
+//    runtimeOnly 'org.postgresql:postgresql'
+//    annotationProcessor 'org.projectlombok:lombok'
+//    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+//    testImplementation 'org.springframework.security:spring-security-test'
+//    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 //    developmentOnly 'org.springframework.boot:spring-boot-devtools'
 //
-//    // Database
-//    runtimeOnly 'org.postgresql:postgresql'
 //    implementation 'org.flywaydb:flyway-database-postgresql'
 //    implementation 'org.flywaydb:flyway-core:latest.release'
 //
-//    // JWT
+//
 //    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
 //    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
 //    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
 //
-//    // Lombok
-//    compileOnly 'org.projectlombok:lombok'
-//    annotationProcessor 'org.projectlombok:lombok'
 //
-//    // Test Dependencies
-//    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-//    testImplementation 'org.springframework.security:spring-security-test'
-//    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-//    testImplementation 'org.testcontainers:junit-jupiter'
-//    testImplementation 'org.testcontainers:postgresql'
-//    testImplementation 'com.h2database:h2'
+//    // test
 //
-//    // Uncomment if you want to use Mockito explicitly
-//    // testImplementation 'org.mockito:mockito-core'
-//    // testImplementation 'org.mockito:mockito-junit-jupiter'
+////    testImplementation 'org.mockito:mockito-core'
+////    testImplementation 'org.mockito:mockito-junit-jupiter'
+//    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+//
 //}
 //
-//// Test Configuration
 //tasks.named('test') {
 //    useJUnitPlatform()
-//    finalizedBy jacocoTestReport
 //}
-//
-//// Jacoco Configuration for Code Coverage
-//jacoco {
-//    toolVersion = "0.8.11"
-//}
-//
-//jacocoTestReport {
-//    dependsOn test
-//    reports {
-//        xml.required = true
-//        html.required = true
-//        csv.required = false
-//    }
-//    finalizedBy jacocoTestCoverageVerification
-//}
-//
-//jacocoTestCoverageVerification {
-//    violationRules {
-//        rule {
-//            limit {
-//                minimum = 0.60 // 60% coverage minimum
-//            }
-//        }
-//    }
-//}
-//
-//// Checkstyle Configuration
-//checkstyle {
-//    toolVersion = '10.12.4'
-//    configFile = file('config/checkstyle/checkstyle.xml')
-//    ignoreFailures = true // Don't fail build on style issues
-//    maxWarnings = 50
-//    maxErrors = 10
-//}
-//
-//checkstyleMain {
-//    reports {
-//        xml.required = true
-//        html.required = true
-//    }
-//}
-//
-//checkstyleTest {
-//    reports {
-//        xml.required = true
-//        html.required = true
-//    }
-//}
-//
-//// Create default checkstyle config if it doesn't exist
-//task createCheckstyleConfig {
-//    doLast {
-//        def configDir = file('config/checkstyle')
-//        if (!configDir.exists()) {
-//            configDir.mkdirs()
-//        }
-//
-//        def configFile = file('config/checkstyle/checkstyle.xml')
-//        if (!configFile.exists()) {
-//            configFile.text = '''<?xml version="1.0"?>
-//<!DOCTYPE module PUBLIC
-//          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
-//          "https://checkstyle.org/dtds/configuration_1_3.dtd">
-//<module name="Checker">
-//    <property name="severity" value="warning"/>
-//    <module name="TreeWalker">
-//        <module name="ConstantName"/>
-//        <module name="LocalFinalVariableName"/>
-//        <module name="LocalVariableName"/>
-//        <module name="MemberName"/>
-//        <module name="MethodName"/>
-//        <module name="PackageName"/>
-//        <module name="ParameterName"/>
-//        <module name="StaticVariableName"/>
-//        <module name="TypeName"/>
-//        <module name="AvoidStarImport"/>
-//        <module name="IllegalImport"/>
-//        <module name="RedundantImport"/>
-//        <module name="UnusedImports"/>
-//        <module name="LineLength">
-//            <property name="max" value="120"/>
-//        </module>
-//        <module name="MethodLength"/>
-//        <module name="ParameterNumber"/>
-//        <module name="EmptyForIteratorPad"/>
-//        <module name="MethodParamPad"/>
-//        <module name="NoWhitespaceAfter"/>
-//        <module name="NoWhitespaceBefore"/>
-//        <module name="ParenPad"/>
-//        <module name="TypecastParenPad"/>
-//        <module name="WhitespaceAfter"/>
-//        <module name="WhitespaceAround"/>
-//        <module name="ModifierOrder"/>
-//        <module name="RedundantModifier"/>
-//        <module name="AvoidNestedBlocks"/>
-//        <module name="EmptyBlock"/>
-//        <module name="LeftCurly"/>
-//        <module name="NeedBraces"/>
-//        <module name="RightCurly"/>
-//        <module name="EmptyStatement"/>
-//        <module name="EqualsHashCode"/>
-//        <module name="IllegalInstantiation"/>
-//        <module name="InnerAssignment"/>
-//        <module name="SimplifyBooleanExpression"/>
-//        <module name="SimplifyBooleanReturn"/>
-//        <module name="HideUtilityClassConstructor"/>
-//        <module name="ArrayTypeStyle"/>
-//        <module name="UpperEll"/>
-//    </module>
-//</module>'''
-//        }
-//    }
-//}
-//
-//// SpotBugs Configuration
-//spotbugs {
-//    ignoreFailures = true // Don't fail build on bug findings
-//    effort = 'max'
-//    reportLevel = 'medium'
-//}
-//
-//spotbugsMain {
-//    reports {
-//        xml.required = true
-//        html.required = true
-//    }
-//}
-//
-//spotbugsTest {
-//    reports {
-//        xml.required = true
-//        html.required = true
-//    }
-//}
-//
-//// Custom task for integration tests
-//task integrationTest(type: Test) {
-//    description = 'Runs integration tests.'
-//    group = 'verification'
-//
-//    testClassesDirs = sourceSets.test.output.classesDirs
-//    classpath = sourceSets.test.runtimeClasspath
-//    shouldRunAfter test
-//
-//    useJUnitPlatform {
-//        includeTags 'integration'
-//    }
-//}
-//
-//// Build lifecycle hooks
-//compileJava.dependsOn createCheckstyleConfig
-//check.dependsOn integrationTest
-//
-//// Print build info
-//gradle.buildFinished { buildResult ->
-//    println ""
-//    println "=================="
-//    println "BUILD COMPLETED"
-//    println "=================="
-//    if (buildResult.failure) {
-//        println "❌ Build failed: ${buildResult.failure.message}"
-//    } else {
-//        println "✅ Build successful!"
-//        println "📊 Reports available:"
-//        println "   - Test results: build/reports/tests/test/index.html"
-//        println "   - Code coverage: build/reports/jacoco/test/html/index.html"
-//        println "   - Checkstyle: build/reports/checkstyle/main.html"
-//        println "   - SpotBugs: build/reports/spotbugs/main.html"
-//    }
-//    println "=================="
-//}
-//
+
+
+// user-date
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.6'
+    id 'io.spring.dependency-management' version '1.1.7'
+    id 'jacoco'
+    id 'checkstyle'
+    id 'com.github.spotbugs' version '6.0.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+description = 'User-Service'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot Starters
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // Development
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+
+    // Database
+    runtimeOnly 'org.postgresql:postgresql'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    implementation 'org.flywaydb:flyway-core:latest.release'
+
+    // JWT
+    implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
+    // Lombok
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    // Test Dependencies
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.springframework.security:spring-security-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'com.h2database:h2'
+
+    // Uncomment if you want to use Mockito explicitly
+    // testImplementation 'org.mockito:mockito-core'
+    // testImplementation 'org.mockito:mockito-junit-jupiter'
+}
+
+// Test Configuration
+tasks.named('test') {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport
+}
+
+// Jacoco Configuration for Code Coverage
+jacoco {
+    toolVersion = "0.8.11"
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+        csv.required = false
+    }
+    finalizedBy jacocoTestCoverageVerification
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                minimum = 0.60 // 60% coverage minimum
+            }
+        }
+    }
+}
+
+// Checkstyle Configuration
+checkstyle {
+    toolVersion = '10.12.4'
+    configFile = file('config/checkstyle/checkstyle.xml')
+    ignoreFailures = true // Don't fail build on style issues
+    maxWarnings = 50
+    maxErrors = 10
+}
+
+checkstyleMain {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+checkstyleTest {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+// Create default checkstyle config if it doesn't exist
+task createCheckstyleConfig {
+    doLast {
+        def configDir = file('config/checkstyle')
+        if (!configDir.exists()) {
+            configDir.mkdirs()
+        }
+
+        def configFile = file('config/checkstyle/checkstyle.xml')
+        if (!configFile.exists()) {
+            configFile.text = '''<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+          "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+          "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<module name="Checker">
+    <property name="severity" value="warning"/>
+    <module name="TreeWalker">
+        <module name="ConstantName"/>
+        <module name="LocalFinalVariableName"/>
+        <module name="LocalVariableName"/>
+        <module name="MemberName"/>
+        <module name="MethodName"/>
+        <module name="PackageName"/>
+        <module name="ParameterName"/>
+        <module name="StaticVariableName"/>
+        <module name="TypeName"/>
+        <module name="AvoidStarImport"/>
+        <module name="IllegalImport"/>
+        <module name="RedundantImport"/>
+        <module name="UnusedImports"/>
+        <module name="LineLength">
+            <property name="max" value="120"/>
+        </module>
+        <module name="MethodLength"/>
+        <module name="ParameterNumber"/>
+        <module name="EmptyForIteratorPad"/>
+        <module name="MethodParamPad"/>
+        <module name="NoWhitespaceAfter"/>
+        <module name="NoWhitespaceBefore"/>
+        <module name="ParenPad"/>
+        <module name="TypecastParenPad"/>
+        <module name="WhitespaceAfter"/>
+        <module name="WhitespaceAround"/>
+        <module name="ModifierOrder"/>
+        <module name="RedundantModifier"/>
+        <module name="AvoidNestedBlocks"/>
+        <module name="EmptyBlock"/>
+        <module name="LeftCurly"/>
+        <module name="NeedBraces"/>
+        <module name="RightCurly"/>
+        <module name="EmptyStatement"/>
+        <module name="EqualsHashCode"/>
+        <module name="IllegalInstantiation"/>
+        <module name="InnerAssignment"/>
+        <module name="SimplifyBooleanExpression"/>
+        <module name="SimplifyBooleanReturn"/>
+        <module name="HideUtilityClassConstructor"/>
+        <module name="ArrayTypeStyle"/>
+        <module name="UpperEll"/>
+    </module>
+</module>'''
+        }
+    }
+}
+
+// SpotBugs Configuration
+spotbugs {
+    ignoreFailures = true // Don't fail build on bug findings
+    effort = 'max'
+    reportLevel = 'medium'
+}
+
+spotbugsMain {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+spotbugsTest {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+// Custom task for integration tests
+task integrationTest(type: Test) {
+    description = 'Runs integration tests.'
+    group = 'verification'
+
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
+    shouldRunAfter test
+
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+}
+
+// Build lifecycle hooks
+compileJava.dependsOn createCheckstyleConfig
+check.dependsOn integrationTest
+
+// Print build info
+gradle.buildFinished { buildResult ->
+    println ""
+    println "=================="
+    println "BUILD COMPLETED"
+    println "=================="
+    if (buildResult.failure) {
+        println "❌ Build failed: ${buildResult.failure.message}"
+    } else {
+        println "✅ Build successful!"
+        println "📊 Reports available:"
+        println "   - Test results: build/reports/tests/test/index.html"
+        println "   - Code coverage: build/reports/jacoco/test/html/index.html"
+        println "   - Checkstyle: build/reports/checkstyle/main.html"
+        println "   - SpotBugs: build/reports/spotbugs/main.html"
+    }
+    println "=================="
+}
+
