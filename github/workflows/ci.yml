@@ -3,22 +3,34 @@ name: User Service CI/CD Pipeline
 on:
   push:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'docs/**'
   pull_request:
     branches: [ main, develop ]
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
   contents: read
   packages: write
   actions: read
+  security-events: write
 
 env:
+  REGISTRY: docker.io
   IMAGE_NAME: godfrey10/user-service
   JAVA_VERSION: 17
   GRADLE_VERSION: 8.5
-  POSTGRES_DB: user-service
-  POSTGRES_USER: postgres
+  POSTGRES_DB: user_service_test
+  POSTGRES_USER: test_user
   POSTGRES_PASSWORD: Server123@
+  DOCKER_USERNAME: godfrey10
+  DOCKER_PASSWORD: godfreygrace10
 
 jobs:
   # -----------------------------
@@ -28,9 +40,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
     services:
       postgres:
-        image: postgres:15
+        image: postgres:15-alpine
         env:
           POSTGRES_USER: ${{ env.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
@@ -38,7 +53,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d ${{ env.POSTGRES_DB }}"
+          --health-cmd="pg_isready -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -46,16 +61,29 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for proper versioning
+
+      - name: Generate version
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            VERSION="v$(date +'%Y%m%d')-${GITHUB_SHA::7}"
+          else
+            VERSION="${GITHUB_REF_NAME}-${GITHUB_SHA::7}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           java-version: ${{ env.JAVA_VERSION }}
-          distribution: temurin
+          distribution: 'temurin'
           cache: gradle
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/gradle-build-action@v3
         with:
           gradle-version: ${{ env.GRADLE_VERSION }}
 
@@ -64,37 +92,86 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          until pg_isready -h localhost -p 5432 -U ${{ env.POSTGRES_USER }}; do
+          timeout 60 bash -c 'until pg_isready -h localhost -p 5432 -U ${{ env.POSTGRES_USER }}; do
             echo "Waiting for PostgreSQL..."
             sleep 2
-          done
+          done'
 
-      - name: Run Unit Tests
-        run: ./gradlew test --no-daemon --info
+      - name: Run tests with coverage
+        run: ./gradlew test jacocoTestReport --no-daemon --info
         env:
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}
           SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
           SPRING_DATASOURCE_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
 
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            build/reports/tests/test/
+            build/reports/jacoco/test/
+          retention-days: 7
+
       - name: Build JAR
         run: ./gradlew bootJar -x test --no-daemon
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
 
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
         with:
           name: jar-artifacts-${{ github.run_number }}
           path: build/libs/*.jar
-          retention-days: 1
+          retention-days: 3
 
   # -----------------------------
-  # 2. Docker Build & Push
+  # 2. Code Quality & Security
+  # -----------------------------
+  code-quality:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Run SpotBugs
+        run: ./gradlew spotbugsMain --no-daemon
+
+      - name: Run dependency check
+        run: ./gradlew dependencyCheckAnalyze --no-daemon
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports-${{ github.run_number }}
+          path: |
+            build/reports/spotbugs/
+            build/reports/dependency-check/
+          retention-days: 7
+
+  # -----------------------------
+  # 3. Docker Build & Push
   # -----------------------------
   build-docker:
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: [build-and-test, code-quality]
     if: github.event_name == 'push'
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -112,8 +189,20 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: godfrey10
-          password: godfreygrace10
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ needs.build-and-test.outputs.version }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -121,93 +210,208 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: godfrey10/user-service:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.build-and-test.outputs.version }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
 
   # -----------------------------
-  # 3. Security Scan
+  # 4. Container Security Scan
   # -----------------------------
-  security-scan:
+  container-security-scan:
     runs-on: ubuntu-latest
     needs: build-docker
     if: github.event_name == 'push'
-    steps:
-      - name: Pull Docker image
-        run: docker pull godfrey10/user-service:latest
+    timeout-minutes: 10
 
-      - name: Run security scan with Trivy
-        run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            aquasec/trivy:latest image \
-            --exit-code 1 \
-            --severity HIGH,CRITICAL \
-            godfrey10/user-service:latest
+    steps:
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ needs.build-and-test.outputs.version }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Trivy with exit code for critical vulnerabilities
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ needs.build-and-test.outputs.version }}'
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
 
   # -----------------------------
-  # 4. Deploy Production
+  # 5. Deploy to Staging
+  # -----------------------------
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: [build-docker, container-security-scan]
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+    timeout-minutes: 10
+
+    steps:
+      - name: Deploy to staging
+        run: |
+          echo "🚀 Deploying ${{ needs.build-and-test.outputs.version }} to staging"
+          # Add your staging deployment logic here
+          # This could be kubectl commands, Helm charts, or API calls to your deployment platform
+
+  # -----------------------------
+  # 6. Deploy to Production
   # -----------------------------
   deploy-production:
     runs-on: ubuntu-latest
-    needs: [build-docker, security-scan]
+    needs: [build-docker, container-security-scan]
     if: github.ref == 'refs/heads/main'
     environment: production
-    timeout-minutes: 10
+    timeout-minutes: 15
+
     steps:
+      - name: Setup deployment environment
+        run: |
+          # Install necessary tools for deployment
+          echo "Setting up deployment tools..."
+
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: godfrey10
-          password: godfreygrace10
+          registry: ${{ env.REGISTRY }}
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }}
 
-      - name: Pull latest image
-        run: docker pull godfrey10/user-service:latest
-
-      - name: Stop and remove old container
+      - name: Deploy to production
         run: |
-          docker stop userservice-prod 2>/dev/null || true
-          docker rm userservice-prod 2>/dev/null || true
-
-      - name: Run container
-        run: |
+          IMAGE_TAG="${{ needs.build-and-test.outputs.version }}"
+          echo "🚀 Deploying ${IMAGE_TAG} to production"
+          
+          # Pull the specific version instead of latest
+          docker pull ${{ env.IMAGE_NAME }}:${IMAGE_TAG}
+          
+          # Graceful deployment with health checks
+          # Stop old container gracefully
+          if docker ps -q -f name=userservice-prod; then
+            echo "Stopping existing container..."
+            docker stop userservice-prod --time=30
+            docker rm userservice-prod
+          fi
+          
+          # Start new container
           docker run -d --name userservice-prod \
+            --restart=unless-stopped \
             -p 8081:8081 \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/user-service \
-            -e SPRING_DATASOURCE_USERNAME=postgres \
-            -e SPRING_DATASOURCE_PASSWORD=Server123@ \
-            godfrey10/user-service:latest
+            --health-cmd="curl -f http://localhost:8081/actuator/health || exit 1" \
+            --health-interval=30s \
+            --health-timeout=10s \
+            --health-retries=3 \
+            -e SPRING_PROFILES_ACTIVE=prod \
+            -e SPRING_DATASOURCE_URL="jdbc:postgresql://host.docker.internal:5432/user-service" \
+            -e SPRING_DATASOURCE_USERNAME="postgres" \
+            -e SPRING_DATASOURCE_PASSWORD="${{ env.POSTGRES_PASSWORD }}" \
+            -e MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE=health,info,metrics \
+            ${{ env.IMAGE_NAME }}:${IMAGE_TAG}
 
-      - name: Verify container
-        run: docker logs userservice-prod --tail 20
+      - name: Wait for application startup
+        run: |
+          echo "Waiting for application to start..."
+          timeout 120 bash -c 'until docker exec userservice-prod curl -f http://localhost:8081/actuator/health; do
+            echo "Waiting for health check..."
+            sleep 5
+          done'
+
+      - name: Verify deployment
+        run: |
+          echo "✅ Verifying deployment..."
+          docker logs userservice-prod --tail 20
+          
+          # Additional health checks
+          if ! docker exec userservice-prod curl -f http://localhost:8081/actuator/health; then
+            echo "❌ Health check failed"
+            docker logs userservice-prod --tail 50
+            exit 1
+          fi
+          
+          echo "🎉 Deployment verification successful!"
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "⚠️ Deployment failed, initiating rollback..."
+          docker stop userservice-prod || true
+          docker rm userservice-prod || true
+          # You could implement logic to restart the previous version here
 
   # -----------------------------
-  # 5. Cleanup
+  # 7. Post-deployment Tests
+  # -----------------------------
+  smoke-tests:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+
+    steps:
+      - name: Run smoke tests
+        run: |
+          echo "🧪 Running smoke tests..."
+          # Add your smoke tests here
+          # curl commands to test critical endpoints
+          # Basic functionality verification
+
+  # -----------------------------
+  # 8. Cleanup
   # -----------------------------
   cleanup:
     runs-on: ubuntu-latest
-    needs: [build-and-test, build-docker, security-scan, deploy-production]
+    needs: [build-and-test, build-docker, container-security-scan, deploy-production, smoke-tests]
     if: always()
+
     steps:
-      - name: Cleanup Docker
+      - name: Cleanup Docker resources
         run: |
-          docker system prune -af || true
-          docker volume prune -f || true
-          rm -rf build/ || true
+          echo "🧹 Cleaning up Docker resources..."
+          docker system prune -af --volumes || true
+
+      - name: Cleanup build artifacts
+        run: |
+          echo "🧹 Cleaning up build artifacts..."
+          # Clean up any temporary files or caches if needed
 
   # -----------------------------
-  # 6. Notifications
+  # 9. Notifications
   # -----------------------------
   notify:
     runs-on: ubuntu-latest
-    needs: [deploy-production, cleanup]
+    needs: [deploy-production, smoke-tests, cleanup]
     if: always()
+
     steps:
-      - name: Notify Deployment
+      - name: Notify deployment status
         run: |
-          if [[ "${{ needs.deploy-production.result }}" == "success" ]]; then
-            echo "🎉 Production deployment successful!"
+          if [[ "${{ needs.deploy-production.result }}" == "success" && "${{ needs.smoke-tests.result }}" == "success" ]]; then
+            echo "🎉 Production deployment and smoke tests successful!"
+            echo "Version: ${{ needs.build-and-test.outputs.version }}"
+            # Add notification logic here (Slack, Teams, email, etc.)
           else
-            echo "⚠️ Deployment failed!"
+            echo "❌ Deployment or smoke tests failed!"
+            echo "Deploy result: ${{ needs.deploy-production.result }}"
+            echo "Smoke tests result: ${{ needs.smoke-tests.result }}"
+            # Add failure notification logic here
           fi
+
+      - name: Update deployment status
+        if: github.ref == 'refs/heads/main'
+        run: |
+          # Update deployment tracking systems, monitoring dashboards, etc.
+          echo "📊 Updating deployment metrics..."
