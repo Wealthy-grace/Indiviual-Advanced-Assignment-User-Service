@@ -98,17 +98,14 @@ jobs:
           name: jar-artifacts-${{ github.run_number }}
           path: build/libs/
 
-      - name: Install Docker CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io
-          docker --version
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ env.DOCKERHUB_PASSWORD }}
+          username: godfrey10
+          password: godfreygrace10
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -116,7 +113,7 @@ jobs:
           context: .
           file: Dockerfile.simple
           push: true
-          tags: ${{ env.DOCKERHUB_USERNAME }}/user-service:latest
+          tags: godfrey10/user-service:latest
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -131,11 +128,13 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - name: Install Docker CLI
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io
-          docker --version
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker
+        uses: docker/setup-docker@v3
+        with:
+          version: 24.0.5
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -143,22 +142,24 @@ jobs:
           username: godfrey10
           password: godfreygrace10
 
-      - name: Pull and run User Service
+      - name: Pull latest image
         run: |
           docker pull godfrey10/user-service:latest
-          
+
+      - name: Stop and remove old container
+        run: |
           docker stop userservice-staging 2>/dev/null || true
           docker rm userservice-staging 2>/dev/null || true
-          
+
+      - name: Run container
+        run: |
           docker run -d --name userservice-staging \
-            -p 8083:8081 \
+            -p 8083:8083 \
             -e SPRING_PROFILES_ACTIVE=staging \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/user-service \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5433/user-service \
             -e SPRING_DATASOURCE_USERNAME=postgres \
             -e SPRING_DATASOURCE_PASSWORD=Server123@ \
             godfrey10/user-service:latest
 
-      - name: Verify deployment
-        run: |
-          docker ps
-          docker logs userservice-staging --tail 20
+      - name: Verify container
+        run: docker logs userservice-staging --tail 20
