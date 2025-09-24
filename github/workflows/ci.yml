@@ -13,8 +13,6 @@ permissions:
 
 env:
   IMAGE_NAME: user-service
-  DOCKERHUB_USERNAME: godfrey10
-  DOCKERHUB_PASSWORD: godfreygrace10
   JAVA_VERSION: 17
   POSTGRES_DB: user-service
   POSTGRES_USER: postgres
@@ -119,22 +117,15 @@ jobs:
           cache-to: type=gha,mode=max
 
   # -----------------------------
-  # 3. Deploy Staging
+  # 3. Deploy Production
   # -----------------------------
-  deploy-staging:
+  deploy-production:
     runs-on: ubuntu-latest
     needs: build-docker
-    environment: staging
-    timeout-minutes: 10
-
+    if: github.ref == 'refs/heads/main'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Set up Docker
         uses: docker/setup-docker@v3
-        with:
-          version: 24.0.5
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -143,23 +134,21 @@ jobs:
           password: godfreygrace10
 
       - name: Pull latest image
-        run: |
-          docker pull godfrey10/user-service:latest
+        run: docker pull godfrey10/user-service:latest
 
       - name: Stop and remove old container
         run: |
-          docker stop userservice-staging 2>/dev/null || true
-          docker rm userservice-staging 2>/dev/null || true
+          docker stop userservice-prod 2>/dev/null || true
+          docker rm userservice-prod 2>/dev/null || true
 
       - name: Run container
         run: |
-          docker run -d --name userservice-staging \
-            -p 8083:8083 \
-            -e SPRING_PROFILES_ACTIVE=staging \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5433/user-service \
+          docker run -d --name userservice-prod \
+            -p 8081:8081 \
+            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/user-service \
             -e SPRING_DATASOURCE_USERNAME=postgres \
             -e SPRING_DATASOURCE_PASSWORD=Server123@ \
             godfrey10/user-service:latest
 
       - name: Verify container
-        run: docker logs userservice-staging --tail 20
+        run: docker logs userservice-prod --tail 20
