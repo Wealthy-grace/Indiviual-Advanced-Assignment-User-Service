@@ -47,13 +47,13 @@ jobs:
       postgres:
         image: postgres:15-alpine
         env:
-          POSTGRES_USER: ${{ env.POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: Server123@
+          POSTGRES_DB: user_service_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U ${{ env.POSTGRES_USER }} -d ${{ env.POSTGRES_DB }}"
+          --health-cmd="pg_isready -U test_user -d user_service_test"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -92,7 +92,7 @@ jobs:
 
       - name: Wait for PostgreSQL
         run: |
-          timeout 60 bash -c 'until pg_isready -h localhost -p 5432 -U ${{ env.POSTGRES_USER }}; do
+          timeout 60 bash -c 'until pg_isready -h localhost -p 5432 -U test_user; do
             echo "Waiting for PostgreSQL..."
             sleep 2
           done'
