@@ -471,3 +471,35 @@ jobs:
         run: |
           # Update deployment tracking systems, monitoring dashboards, etc.
           echo "📊 Updating deployment metrics..."
+          
+          # -----------------------------
+          # 5. Cleanup
+          # -----------------------------
+          cleanup:
+            runs-on: ubuntu-latest
+            needs: [ build-and-test, build-docker, deploy-staging, deploy-production ]
+            if: always()
+            steps:
+              - name: Cleanup Docker
+                run: |
+                  docker system prune -af || true
+                  docker volume prune -f || true
+                  rm -rf build/ || true
+
+          # -----------------------------
+          # 6. Notifications
+          # -----------------------------
+          notify:
+            runs-on: ubuntu-latest
+            needs: [ deploy-staging, deploy-production, cleanup ]
+            if: always()
+            steps:
+              - name: Notify Deployment
+                run: |
+                  if [[ "${{ needs.deploy-production.result }}" == "success" ]]; then
+                    echo "🎉 Production deployment successful!"
+                  elif [[ "${{ needs.deploy-staging.result }}" == "success" ]]; then
+                    echo "🚀 Staging deployment successful!"
+                  else
+                    echo "⚠️ Deployment failed!"
+                  fi
