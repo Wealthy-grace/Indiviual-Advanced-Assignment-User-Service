@@ -242,6 +242,29 @@ public class UserServiceImplTest {
         assertEquals("ROLE_STUDENT", users.get(0).getRole());
     }
 
+    @Test
+    void getUserByUsername_UserExists_ReturnsUserDto_ServiceTests() {
+        // Arrange
+        String role = "ROLE_STUDENT"; // or ROLE_ADMIN depending on your test
+        UserEntity userEntity = new UserEntity();
+        userEntity.setUsername("testuser");
+        userEntity.setEmail("test@example.com");
+        userEntity.setRole(Role.valueOf(role)); // important!
+
+        // Mock repository
+        when(userRepository.findAll()).thenReturn(Collections.singletonList(userEntity));
+
+        // Act
+        List<UserDto> users = userService.getAllUsers(); // internally converts entity to DTO
+
+        // Assert
+        assertNotNull(users);
+        assertEquals(1, users.size());
+        assertEquals("testuser", users.get(0).getUsername());
+        assertEquals("ROLE_STUDENT", users.get(0).getRole());
+    }
+
+
 
 
     @Test
