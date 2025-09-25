@@ -102,7 +102,7 @@ jobs:
           --health-cmd="curl -f http://localhost:9000 || exit 1"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -123,17 +123,17 @@ jobs:
           name: test-results-${{ github.run_number }}
           path: build/
 
-      - name: Wait for SonarQube to start
+      - name: Wait for SonarQube
         run: |
           echo "Waiting for SonarQube..."
-          until curl -s http://localhost:9000 > /dev/null; do
+          until curl -s http://localhost:9000/api/system/health | grep -q "\"status\":\"GREEN\""; do
+            echo "Waiting..."
             sleep 5
           done
 
       - name: Run SonarQube Analysis
         env:
-          SONAR_TOKEN: squ_b290634a7c433dfcde0e01c4f4870cad9753cb7c
-
+          SONAR_TOKEN: sqp_3f88a9480299b6dccca3522bef2fdd3fa4336f65
 
         run: |
           ./gradlew sonar \
@@ -145,7 +145,7 @@ jobs:
             -Dsonar.junit.reportPaths=build/test-results/test \
             -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml
 
-  # -----------------------------
+    # -----------------------------
   # 3. Docker Build & Push
   # -----------------------------
   build-docker:

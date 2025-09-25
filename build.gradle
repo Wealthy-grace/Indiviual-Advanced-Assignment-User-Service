@@ -66,9 +66,9 @@ plugins {
     id 'org.springframework.boot' version '3.5.6'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'jacoco'
-    //id 'org.sonarqube' version '5.1.0.4882'
     id "org.sonarqube" version "6.3.1.5724"
 }
+
 
 group = 'com.example'
 version = '0.0.1-SNAPSHOT'
@@ -89,8 +89,6 @@ configurations {
 repositories {
     mavenCentral()
 }
-
-
 
 dependencies {
     // Spring Boot Starters
@@ -198,22 +196,20 @@ jacocoTestCoverageVerification {
     }
 }
 
-// SonarCloud configuration
+// SonarQube configuration
 sonarqube {
     properties {
         property "sonar.projectKey", "user-service"
         property "sonar.projectName", "User Service"
         property "sonar.organization", "godfrey10"
         property "sonar.host.url", "http://localhost:9000"
-        property "sonar.token", System.getProperty("sonar.token") ?: System.getenv("SONAR_TOKEN")
-        property "sonar.host.url", "https://sonarcloud.io"
+        property "sonar.login", System.getProperty("sonar.token") ?: System.getenv("SONAR_TOKEN")
         property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
         property "sonar.junit.reportPaths", "build/test-results/test"
         property "sonar.sourceEncoding", "UTF-8"
         property "sonar.java.source", "17"
         property "sonar.java.target", "17"
         property "sonar.qualitygate.wait", "true"
-
     }
 }
 
@@ -236,18 +232,21 @@ task qualityCheck {
     dependsOn test, jacocoTestReport, jacocoTestCoverageVerification
 }
 
+// Fast build for development
 task fastBuild {
     description = 'Fast build for development - skips tests'
     group = 'build'
     dependsOn compileJava, compileTestJava, bootJar
 }
 
+// Build with tests but without strict coverage verification
 task buildWithTests {
     description = 'Build with tests but without strict coverage verification'
     group = 'build'
     dependsOn compileJava, test, bootJar
 }
 
+// Coverage report without verification
 task coverageReport {
     description = 'Generate coverage report without verification'
     group = 'reporting'
@@ -255,5 +254,17 @@ task coverageReport {
     doLast { tasks.jacocoTestReport.execute() }
 }
 
+// Ensure integration tests are run after unit tests
 check.dependsOn integrationTest
-tasks.sonar.mustRunAfter test, jacocoTestReport
+
+// SonarQube task should run after tests and Jacoco report
+tasks.named('sonarqube') {
+    mustRunAfter test, jacocoTestReport
+}
+
+// Aggregate all quality tasks
+task fullQualityCheck {
+    description = 'Runs all tests, coverage, integration tests, and SonarQube analysis'
+    group = 'verification'
+    dependsOn qualityCheck, integrationTest, jacocoTestReport, tasks.named('sonarqube')
+}
