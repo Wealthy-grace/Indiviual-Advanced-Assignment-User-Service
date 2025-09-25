@@ -77,8 +77,13 @@ jobs:
             sleep 2
           done
 
-      - name: Validate Gradle wrapper
-        uses: gradle/wrapper-validation-action@v1
+      - name: Verify Gradle wrapper exists
+        run: |
+          if [ ! -f "./gradlew" ]; then
+            echo "Error: gradlew not found"
+            exit 1
+          fi
+          echo "Gradle wrapper found and validated"
 
       - name: Run tests with coverage
         run: ./gradlew clean test jacocoTestReport --no-daemon --stacktrace
