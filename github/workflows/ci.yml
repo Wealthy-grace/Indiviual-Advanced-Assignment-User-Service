@@ -151,12 +151,40 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
+      # Set required kernel parameters for SonarQube
+      - name: Configure system for SonarQube
+        run: |
+          # Set vm.max_map_count for Elasticsearch (required by SonarQube)
+          echo "Setting kernel parameters for SonarQube..."
+          sudo sysctl -w vm.max_map_count=524288
+          sudo sysctl -w fs.file-max=131072
+          
+          # Verify settings
+          echo "vm.max_map_count: $(sysctl vm.max_map_count)"
+          echo "fs.file-max: $(sysctl fs.file-max)"
+
+      # Create CI-specific docker-compose override
+      - name: Create CI docker-compose override
+        run: |
+          cat > docker-compose.ci.yml << 'EOF'
+          services:
+            sonarqube:
+              # Remove sysctls for CI environment
+              environment:
+                SONAR_JDBC_URL: jdbc:postgresql://sonarqube-postgres:5432/sonarqube
+                SONAR_JDBC_USERNAME: sonar
+                SONAR_JDBC_PASSWORD: sonar123
+                SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: true
+                SONAR_WEB_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
+                SONAR_CE_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
+          EOF
+
       # Start your Docker Compose services for testing
       - name: Start Docker Compose Services
         run: |
           echo "Starting Docker Compose services..."
-          # Use Docker Compose V2 plugin (docker compose instead of docker-compose)
-          docker compose up -d postgres-service sonarqube-postgres sonarqube
+          # Use Docker Compose V2 plugin with CI override
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres-service sonarqube-postgres sonarqube
           
           # Wait for PostgreSQL to be ready
           echo "Waiting for PostgreSQL to be ready..."
@@ -205,7 +233,7 @@ jobs:
         if: always()  # Always cleanup, even if previous steps fail
         run: |
           echo "Cleaning up Docker Compose services..."
-          docker compose down --volumes --remove-orphans || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down --volumes --remove-orphans || true
 
   # -----------------------------
   # 3. Security Scanning
