@@ -133,7 +133,7 @@ jobs:
 
       - name: Run SonarQube Analysis
         env:
-          SONAR_TOKEN: sqp_3f88a9480299b6dccca3522bef2fdd3fa4336f65
+          SONAR_TOKEN: sqp_0c7316a589d409ca73718877bf2bf8a7e4e92a86
 
         run: |
           ./gradlew sonar \
