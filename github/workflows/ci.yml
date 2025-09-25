@@ -240,16 +240,16 @@ jobs:
             exit 0
           fi
           
-          # Run the analysis
-          ./gradlew sonar \
+          # Run the analysis using sonarqube task and login parameter
+          ./gradlew sonarqube \
             -Dsonar.projectKey=user-service \
             -Dsonar.projectName='User Service' \
             -Dsonar.host.url=http://localhost:9000 \
-            -Dsonar.token="$SONAR_TOKEN" \
+            -Dsonar.login="$SONAR_TOKEN" \
             -Dsonar.java.binaries=build/classes/java/main \
             -Dsonar.junit.reportPaths=build/test-results/test \
             -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
-            --no-daemon --stacktrace
+            --no-daemon --stacktrace --warning-mode all
           
           echo "SonarQube analysis completed!"
           echo "View results at: http://localhost:9000/dashboard?id=user-service"
