@@ -34,7 +34,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d user-service"
+          --health-cmd="pg_isready -U postgres -d ${{ env.POSTGRES_DB }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
@@ -95,6 +95,16 @@ jobs:
   sonar-analysis:
     runs-on: ubuntu-latest
     needs: build-and-test
+    services:
+      sonarqube:
+        image: sonarqube:latest
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd="curl -f http://localhost:9000 || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -115,9 +125,18 @@ jobs:
           name: test-results-${{ github.run_number }}
           path: build/
 
+      - name: Wait for SonarQube to start
+        run: |
+          echo "Waiting for SonarQube..."
+          until curl -s http://localhost:9000 > /dev/null; do
+            sleep 5
+          done
+
       - name: Run SonarQube Analysis
         env:
-          SONAR_TOKEN:  sqp_3f88a9480299b6dccca3522bef2fdd3fa4336f65  # store your SonarQube token here
+          SONAR_TOKEN: squ_b290634a7c433dfcde0e01c4f4870cad9753cb7c
+
+
         run: |
           ./gradlew sonar \
             -Dsonar.projectKey=user-service \
