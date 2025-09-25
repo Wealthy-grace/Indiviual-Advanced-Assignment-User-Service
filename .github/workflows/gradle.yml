@@ -41,6 +41,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better SonarQube analysis
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -58,8 +60,9 @@ jobs:
             echo "Waiting for PostgreSQL..."
             sleep 2
           done
-      - name: Run Unit Tests
-        run: ./gradlew test --no-daemon --info
+
+      - name: Run Unit Tests with Coverage
+        run: ./gradlew test jacocoTestReport --no-daemon --info
         env:
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}
@@ -69,6 +72,16 @@ jobs:
       - name: Build Application
         run: ./gradlew bootJar -x test --no-daemon
 
+      - name: Upload test results and coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            build/test-results/test/
+            build/reports/jacoco/test/
+            build/reports/tests/test/
+          retention-days: 1
+
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -77,12 +90,105 @@ jobs:
           retention-days: 1
 
   # -----------------------------
-  # 2. Docker Build & Push
+  # 2. SonarQube Analysis
+  # -----------------------------
+  sonarqube-analysis:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: ${{ env.POSTGRES_DB }}
+          POSTGRES_USER: ${{ env.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d user-service"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Shallow clones should be disabled for better SonarQube analysis
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: temurin
+          cache: gradle
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      - name: Download test results and coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: build/
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U ${{ env.POSTGRES_USER }}; do
+            echo "Waiting for PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Run SonarQube Analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SPRING_PROFILES_ACTIVE: test
+          SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}
+          SPRING_DATASOURCE_USERNAME: ${{ env.POSTGRES_USER }}
+          SPRING_DATASOURCE_PASSWORD: ${{ env.POSTGRES_PASSWORD }}
+        run: |
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            ./gradlew sonarqube --no-daemon --info \
+              -Dsonar.pullrequest.key=${{ github.event.number }} \
+              -Dsonar.pullrequest.branch=${{ github.event.pull_request.head.ref }} \
+              -Dsonar.pullrequest.base=${{ github.event.pull_request.base.ref }}
+          else
+            ./gradlew sonarqube --no-daemon --info \
+              -Dsonar.branch.name=${{ github.ref_name }}
+          fi
+
+  # -----------------------------
+  # 3. Quality Gate Check
+  # -----------------------------
+  quality-gate:
+    runs-on: ubuntu-latest
+    needs: sonarqube-analysis
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+
+    steps:
+      - name: SonarQube Quality Gate check
+        uses: sonarqube-quality-gate-action@master
+        timeout-minutes: 5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  # -----------------------------
+  # 4. Docker Build & Push
   # -----------------------------
   build-docker:
     runs-on: ubuntu-latest
-    needs: build-and-test
-    if: github.event_name == 'push'
+    needs: [build-and-test, quality-gate]
+    if: github.event_name == 'push' && (needs.quality-gate.result == 'success' || needs.quality-gate.result == 'skipped')
 
     steps:
       - name: Checkout code
@@ -115,7 +221,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   # -----------------------------
-  # 3. Deploy Production
+  # 5. Deploy Production
   # -----------------------------
   deploy-production:
     runs-on: ubuntu-latest
@@ -129,6 +235,7 @@ jobs:
         run: |
           docker stop userservice-prod 2>/dev/null || true
           docker rm userservice-prod 2>/dev/null || true
+
       - name: Run container
         run: |
           docker run -d --name userservice-prod \
@@ -137,5 +244,6 @@ jobs:
             -e SPRING_DATASOURCE_USERNAME=postgres \
             -e SPRING_DATASOURCE_PASSWORD=Server123@ \
             godfrey10/user-service:latest
+
       - name: Verify container
         run: docker logs userservice-prod --tail 20
