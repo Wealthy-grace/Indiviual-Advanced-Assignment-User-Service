@@ -10,6 +10,7 @@ on:
 permissions:
   contents: read
   packages: write
+  pull-requests: read # for SonarQube
 
 env:
   IMAGE_NAME: godfrey10/user-service
@@ -19,7 +20,10 @@ env:
   POSTGRES_PASSWORD: Server123@
 
 jobs:
-  build-and-deploy:
+  # -----------------------------
+  # 1. Build and Test
+  # -----------------------------
+  build-and-test:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -39,56 +43,352 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SonarQube
 
-      - name: Set up JDK
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: ${{ env.JAVA_VERSION }}
+          java-version: 17
           distribution: temurin
           cache: gradle
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Wait for PostgreSQL
+      - name: Wait for PostgreSQL to be ready
         run: |
-          until pg_isready -h localhost -p 5432 -U postgres; do
-            echo "Waiting for PostgreSQL..."
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "PostgreSQL is ready!"
+              break
+            fi
+            echo "Waiting for PostgreSQL... ($i/30)"
             sleep 2
           done
 
-      - name: Build, Test, Coverage & SonarQube
+      - name: Validate Gradle wrapper
+        uses: gradle/wrapper-validation-action@v1
+
+      - name: Run tests with coverage
+        run: ./gradlew clean test jacocoTestReport --no-daemon --stacktrace
         env:
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/user-service
           SPRING_DATASOURCE_USERNAME: postgres
           SPRING_DATASOURCE_PASSWORD: Server123@
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: |
-          ./gradlew clean build jacocoTestReport sonarqube \
-            --no-daemon --parallel --info
 
-      - name: Build Docker Image
+      - name: Build application
+        run: ./gradlew bootJar -x test --no-daemon --stacktrace
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: test-results-${{ github.run_number }}
+          path: |
+            build/test-results/test/
+            build/reports/jacoco/test/
+            build/reports/tests/test/
+          retention-days: 7
+
+      - name: Upload JAR artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: jar-artifacts-${{ github.run_number }}
+          path: build/libs/*.jar
+          retention-days: 7
+
+  # -----------------------------
+  # 2. Code Quality Analysis - Local SonarQube
+  # -----------------------------
+  code-quality:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.actor != 'dependabot[bot]'  # Skip for dependabot PRs
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for SonarQube blame and history
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+          cache: gradle
+
+      - name: Cache SonarQube packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          name: test-results-${{ github.run_number }}
+          path: build/
+
+      - name: Make gradlew executable
+        run: chmod +x ./gradlew
+
+      # Start your Docker Compose services for testing
+      - name: Start Docker Compose Services
+        run: |
+          echo "Starting Docker Compose services..."
+          # Use your exact docker-compose file
+          docker-compose up -d postgres-service sonarqube-postgres sonarqube
+          
+          # Wait for PostgreSQL to be ready
+          echo "Waiting for PostgreSQL to be ready..."
+          timeout 120s bash -c '
+            until docker exec user-service-postgres pg_isready -U postgres -d user-service; do
+              echo "Waiting for PostgreSQL..."
+              sleep 5
+            done
+          '
+          echo "PostgreSQL is ready!"
+
+      - name: Wait for SonarQube to be ready
+        run: |
+          echo "Waiting for SonarQube to be ready..."
+          timeout 300s bash -c '
+            until curl -s http://localhost:9000/api/system/status | grep -q "UP"; do
+              echo "Waiting for SonarQube to start..."
+              sleep 10
+            done
+          '
+          echo "SonarQube is ready!"
+          
+          # Verify SonarQube health
+          curl -s http://localhost:9000/api/system/health | grep -q "GREEN\|YELLOW" && echo "SonarQube health check passed"
+
+      - name: Run SonarQube Analysis
+        env:
+          SONAR_TOKEN: sqp_0c7316a589d409ca73718877bf2bf8a7e4e92a86
+        run: |
+          echo "Running SonarQube analysis..."
+          
+          ./gradlew sonar \
+            -Dsonar.projectKey=user-service \
+            -Dsonar.projectName='User Service' \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.token="$SONAR_TOKEN" \
+            -Dsonar.java.binaries=build/classes/java/main \
+            -Dsonar.junit.reportPaths=build/test-results/test \
+            -Dsonar.coverage.jacoco.xmlReportPaths=build/reports/jacoco/test/jacocoTestReport.xml \
+            --no-daemon --stacktrace
+          
+          echo "SonarQube analysis completed!"
+          echo "View results at: http://localhost:9000/dashboard?id=user-service"
+
+      - name: Cleanup Docker Services
+        if: always()  # Always cleanup, even if previous steps fail
+        run: |
+          echo "Cleaning up Docker Compose services..."
+          docker-compose down --volumes --remove-orphans || true
+
+  # -----------------------------
+  # 3. Security Scanning
+  # -----------------------------
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    permissions:
+      security-events: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # -----------------------------
+  # 4. Docker Build & Push
+  # -----------------------------
+  build-docker:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, code-quality]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: godfrey10
+          password: godfreygrace10
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: godfrey10/user-service
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=stable,enable={{is_default_branch}}
+
+      # Use your multi-stage Dockerfile (the one from your setup)
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: Dockerfile.simple
           push: true
-          tags: ${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Deploy to Production (Main branch only)
-        if: github.ref == 'refs/heads/main'
+  # -----------------------------
+  # 5. Deploy to Staging
+  # -----------------------------
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/develop'
+    environment: staging
+
+    steps:
+      - name: Deploy to Staging
         run: |
-          docker pull ${{ env.IMAGE_NAME }}:latest
-          docker stop userservice-prod 2>/dev/null || true
-          docker rm userservice-prod 2>/dev/null || true
-          docker run -d --name userservice-prod \
-            -p 8081:8081 \
-            -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/user-service \
-            -e SPRING_DATASOURCE_USERNAME=postgres \
-            -e SPRING_DATASOURCE_PASSWORD=Server123@ \
-            ${{ env.IMAGE_NAME }}:latest
-          docker logs userservice-prod --tail 20
+          echo "Deploying to staging environment..."
+          # Add your staging deployment commands here
+          # This could be a webhook call, SSH deployment, etc.
+
+  # -----------------------------
+  # 6. Deploy to Production
+  # -----------------------------
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: build-docker
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to Production
+        run: |
+          echo "Deploying to production using Docker Compose..."
+          
+          # Pull the latest image that was just built
+          docker pull godfrey10/user-service:latest
+          
+          # Update the docker-compose file to use the new image
+          # Start the production services (excluding development tools)
+          docker-compose -f docker-compose.yml up -d postgres-service user-service
+          
+          echo "Production deployment completed!"
+
+      - name: Wait for services to be healthy
+        run: |
+          echo "Waiting for services to be healthy..."
+          
+          # Wait for PostgreSQL
+          timeout 120s bash -c '
+            until docker exec user-service-postgres pg_isready -U postgres -d user-service; do
+              echo "Waiting for PostgreSQL..."
+              sleep 5
+            done
+          '
+          echo "PostgreSQL is ready!"
+          
+          # Wait for User Service
+          timeout 180s bash -c '
+            until curl -f http://localhost:8081/actuator/health; do
+              echo "Waiting for User Service to be healthy..."
+              sleep 10
+            done
+          '
+          echo "User Service is ready!"
+
+      - name: Verify deployment
+        run: |
+          echo "Verifying deployment..."
+          
+          # Check container status
+          docker-compose ps
+          
+          # Check service health
+          echo "=== Service Health Check ==="
+          curl -s http://localhost:8081/actuator/health | jq '.' || curl -s http://localhost:8081/actuator/health
+          
+          # Check service info
+          echo "=== Service Info ==="
+          curl -s http://localhost:8081/actuator/info | jq '.' || curl -s http://localhost:8081/actuator/info
+          
+          # Check container logs (last 20 lines)
+          echo "=== Recent Logs ==="
+          docker logs user-service-app --tail 20
+          
+          echo "✅ Production deployment verification completed!"
+
+      - name: Cleanup old images
+        run: |
+          echo "Cleaning up old Docker images..."
+          docker image prune -f
+          docker system prune -f --volumes
+          echo "Cleanup completed!"
+
+      - name: Notify deployment
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Production deployment successful!"
+          else
+            echo "❌ Production deployment failed!"
+          fi
+
+  # -----------------------------
+  # 7. Post-deployment tests
+  # -----------------------------
+  post-deployment-tests:
+    runs-on: ubuntu-latest
+    needs: deploy-production
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Run smoke tests
+        run: |
+          echo "Running post-deployment smoke tests..."
+          
+          # Basic health check
+          curl -f http://localhost:8081/actuator/health
+          
+          # Add more smoke tests here
+          echo "All smoke tests passed!"
