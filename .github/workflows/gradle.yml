@@ -42,7 +42,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for better SonarQube analysis
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -116,7 +116,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Shallow clones should be disabled for better SonarQube analysis
+          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -150,7 +150,7 @@ jobs:
 
       - name: Run SonarQube Analysis
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Needed to get PR information, if any
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/${{ env.POSTGRES_DB }}
@@ -177,8 +177,7 @@ jobs:
 
     steps:
       - name: SonarQube Quality Gate check
-        uses: sonarqube-quality-gate-action@master
-        timeout-minutes: 5
+        uses: sonarsource/sonarqube-quality-gate-action@v1.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
@@ -206,8 +205,8 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: godfrey10
-          password: godfreygrace10
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -241,8 +240,8 @@ jobs:
           docker run -d --name userservice-prod \
             -p 8081:8081 \
             -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/user-service \
-            -e SPRING_DATASOURCE_USERNAME=postgres \
-            -e SPRING_DATASOURCE_PASSWORD=Server123@ \
+            -e SPRING_DATASOURCE_USERNAME=${{ env.POSTGRES_USER }} \
+            -e SPRING_DATASOURCE_PASSWORD=${{ env.POSTGRES_PASSWORD }} \
             godfrey10/user-service:latest
 
       - name: Verify container
