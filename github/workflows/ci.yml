@@ -150,8 +150,8 @@ jobs:
       - name: Start Docker Compose Services
         run: |
           echo "Starting Docker Compose services..."
-          # Use your exact docker-compose file
-          docker-compose up -d postgres-service sonarqube-postgres sonarqube
+          # Use Docker Compose V2 plugin (docker compose instead of docker-compose)
+          docker compose up -d postgres-service sonarqube-postgres sonarqube
           
           # Wait for PostgreSQL to be ready
           echo "Waiting for PostgreSQL to be ready..."
@@ -200,7 +200,7 @@ jobs:
         if: always()  # Always cleanup, even if previous steps fail
         run: |
           echo "Cleaning up Docker Compose services..."
-          docker-compose down --volumes --remove-orphans || true
+          docker compose down --volumes --remove-orphans || true
 
   # -----------------------------
   # 3. Security Scanning
@@ -311,7 +311,7 @@ jobs:
           
           # Update the docker-compose file to use the new image
           # Start the production services (excluding development tools)
-          docker-compose -f docker-compose.yml up -d postgres-service user-service
+          docker compose -f docker-compose.yml up -d postgres-service user-service
           
           echo "Production deployment completed!"
 
@@ -342,7 +342,7 @@ jobs:
           echo "Verifying deployment..."
           
           # Check container status
-          docker-compose ps
+          docker compose ps
           
           # Check service health
           echo "=== Service Health Check ==="
