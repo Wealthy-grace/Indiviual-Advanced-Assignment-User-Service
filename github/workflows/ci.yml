@@ -68,14 +68,21 @@ jobs:
 
       - name: Wait for PostgreSQL to be ready
         run: |
-          for i in {1..30}; do
-            if pg_isready -h localhost -p 5432 -U postgres; then
+          echo "Waiting for PostgreSQL to be ready..."
+          for i in {1..60}; do
+            if pg_isready -h localhost -p 5432 -U postgres -d user-service; then
               echo "PostgreSQL is ready!"
+              # Test database connection
+              PGPASSWORD=Server123@ psql -h localhost -p 5432 -U postgres -d user-service -c "SELECT version();" || echo "Connection test failed"
               break
             fi
-            echo "Waiting for PostgreSQL... ($i/30)"
+            echo "Waiting for PostgreSQL... ($i/60)"
             sleep 2
           done
+          
+          # Ensure database exists and is accessible
+          echo "Creating database if not exists..."
+          PGPASSWORD=Server123@ createdb -h localhost -p 5432 -U postgres user-service 2>/dev/null || echo "Database already exists or creation failed"
 
       - name: Verify Gradle wrapper exists
         run: |
@@ -86,12 +93,14 @@ jobs:
           echo "Gradle wrapper found and validated"
 
       - name: Run tests with coverage
-        run: ./gradlew clean test jacocoTestReport --no-daemon --stacktrace
+        run: ./gradlew clean test jacocoTestReport --no-daemon --stacktrace --info
         env:
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/user-service
           SPRING_DATASOURCE_USERNAME: postgres
           SPRING_DATASOURCE_PASSWORD: Server123@
+          SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
+          SPRING_JPA_SHOW_SQL: true
 
       - name: Build application
         run: ./gradlew bootJar -x test --no-daemon --stacktrace
@@ -357,7 +366,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: godfrey10
-          password: godfreygrace10
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Extract metadata
         id: meta
