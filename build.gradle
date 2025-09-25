@@ -125,50 +125,36 @@ dependencies {
     testImplementation 'com.h2database:h2'
 }
 
-// Test Configuration - Improved for reliability
+// Test configuration
 tasks.named('test') {
     useJUnitPlatform()
     finalizedBy jacocoTestReport
-
-    // Prevent hanging tests
     timeout = Duration.ofMinutes(5)
-
-    // Better performance settings
     maxParallelForks = Runtime.runtime.availableProcessors().intdiv(2) ?: 1
-
-    // JVM settings
     minHeapSize = "256m"
     maxHeapSize = "1g"
-    jvmArgs = [
-            '-XX:MaxMetaspaceSize=256m',
-            '-XX:+UseG1GC',
-            '-Djava.awt.headless=true'
-    ]
+    jvmArgs = ['-XX:MaxMetaspaceSize=256m','-XX:+UseG1GC','-Djava.awt.headless=true']
 
-    // Generate XML reports for SonarQube
     reports {
         junitXml.required = true
         html.required = true
     }
 
-    // Test logging for debugging
     testLogging {
         events "started", "passed", "skipped", "failed"
         exceptionFormat "short"
-        showStandardStreams = false
         showStackTraces = true
     }
 
-    // Set system properties for tests
     systemProperties = [
             'spring.profiles.active': 'test',
-            'logging.level.org.springframework.security': 'WARN',  // Reduced logging
+            'logging.level.org.springframework.security': 'WARN',
             'logging.level.org.flywaydb': 'WARN',
             'spring.test.context.cache.maxSize': '1'
     ]
 }
 
-// Jacoco Configuration for Code Coverage
+// Jacoco configuration
 jacoco {
     toolVersion = "0.8.12"
 }
@@ -179,31 +165,17 @@ jacocoTestReport {
         xml.required = true
         html.required = true
         csv.required = false
-    }
-
-    // Configure XML report location for SonarQube
-    reports {
-        xml {
-            required = true
-            outputLocation = layout.buildDirectory.file('reports/jacoco/test/jacocoTestReport.xml')
-        }
-        html {
-            required = true
-            outputLocation = layout.buildDirectory.dir('reports/jacoco/test/html')
-        }
-    }
-
-    // Only run coverage verification in CI or when explicitly requested
-    if (!project.hasProperty('skipCoverageVerification')) {
-        finalizedBy jacocoTestCoverageVerification
+        xml.outputLocation = layout.buildDirectory.file('reports/jacoco/test/jacocoTestReport.xml')
+        html.outputLocation = layout.buildDirectory.dir('reports/jacoco/test/html')
     }
 }
 
+// Coverage verification
 jacocoTestCoverageVerification {
     violationRules {
         rule {
             limit {
-                minimum = 0.30 // 30% overall coverage (more realistic for new projects)
+                minimum = 0.30
             }
         }
         rule {
@@ -211,10 +183,8 @@ jacocoTestCoverageVerification {
             limit {
                 counter = 'BRANCH'
                 value = 'COVEREDRATIO'
-                minimum = 0.20 // 20% branch coverage (more realistic)
+                minimum = 0.20
             }
-
-            // Exclude infrastructure classes from strict coverage requirements
             excludes = [
                     'com.example.userservice.security.jwt.*',
                     'com.example.userservice.configuration.*',
@@ -225,158 +195,59 @@ jacocoTestCoverageVerification {
     }
 }
 
-// SonarQube Configuration - Enhanced with built-in quality rules
+// SonarCloud configuration
 sonarqube {
     properties {
-        // Basic project information
         property "sonar.projectKey", "user-service"
         property "sonar.projectName", "User Service"
-        property "sonar.projectVersion", project.version
         property "sonar.organization", "godfrey10"
-
-        // Source and test directories
-        property "sonar.sources", "src/main/java"
-        property "sonar.tests", "src/test/java"
-        property "sonar.java.binaries", "build/classes/java/main"
-        property "sonar.java.test.binaries", "build/classes/java/test"
-
-        // Coverage and test reports
+        property "sonar.host.url", "https://sonarcloud.io"
         property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
         property "sonar.junit.reportPaths", "build/test-results/test"
-
-        // Source encoding
         property "sonar.sourceEncoding", "UTF-8"
-
-        // Java version
         property "sonar.java.source", "17"
         property "sonar.java.target", "17"
-
-        // Quality gate
         property "sonar.qualitygate.wait", "true"
-
-        // Exclude patterns
-        property "sonar.exclusions", [
-                "**/generated/**",
-                "**/target/**",
-                "**/build/**",
-                "**/*Application.java",
-                "**/*Config.java",
-                "**/*Configuration.java"
-        ].join(",")
-
-        // Test exclusions
-        property "sonar.test.exclusions", [
-                "**/test/**",
-                "**/*Test.java",
-                "**/*Tests.java"
-        ].join(",")
-
-        // Coverage exclusions
-        property "sonar.coverage.exclusions", [
-                "**/dto/**",
-                "**/entity/**",
-                "**/config/**",
-                "**/*Application.java",
-                "**/*Config.java",
-                "**/*Configuration.java"
-        ].join(",")
-
-        // Duplication exclusions
-        property "sonar.cpd.exclusions", [
-                "**/dto/**",
-                "**/entity/**"
-        ].join(",")
     }
 }
 
-// Custom task for integration tests
+// Integration tests
 task integrationTest(type: Test) {
     description = 'Runs integration tests.'
     group = 'verification'
-
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     shouldRunAfter test
-
-    useJUnitPlatform {
-        includeTags 'integration'
-    }
-
-    reports {
-        junitXml.required = true
-        html.required = true
-    }
-
+    useJUnitPlatform { includeTags 'integration' }
+    reports { junitXml.required = true; html.required = true }
     finalizedBy jacocoTestReport
 }
 
-// Task to run all quality checks (simplified)
+// Quality check
 task qualityCheck {
-    description = 'Runs all quality checks including tests and coverage'
+    description = 'Runs all quality checks'
     group = 'verification'
     dependsOn test, jacocoTestReport, jacocoTestCoverageVerification
 }
 
-// Quick build task without quality checks
 task fastBuild {
     description = 'Fast build for development - skips tests'
     group = 'build'
     dependsOn compileJava, compileTestJava, bootJar
 }
 
-// Build with tests but skip coverage verification
 task buildWithTests {
     description = 'Build with tests but without strict coverage verification'
     group = 'build'
     dependsOn compileJava, test, bootJar
 }
 
-// Generate coverage report without verification
 task coverageReport {
     description = 'Generate coverage report without verification'
     group = 'reporting'
     dependsOn test
-
-    doLast {
-        tasks.jacocoTestReport.execute()
-    }
+    doLast { tasks.jacocoTestReport.execute() }
 }
 
-// Build lifecycle hooks
 check.dependsOn integrationTest
-
-// Ensure SonarQube runs after all quality checks
-tasks.sonarqube.dependsOn qualityCheck
-
-// Print build info
-gradle.buildFinished { buildResult ->
-    println ""
-    println "=================="
-    println "BUILD COMPLETED"
-    println "=================="
-    if (buildResult.failure) {
-        println "❌ Build failed: ${buildResult.failure.message}"
-    } else {
-        println "✅ Build successful!"
-        println "📊 Reports available:"
-        println "   - Test results: build/reports/tests/test/index.html"
-        println "   - Integration tests: build/reports/tests/integrationTest/index.html"
-        println "   - Code coverage: build/reports/jacoco/test/html/index.html"
-        println ""
-        println "🚀 Quality Commands:"
-        println "   - Run quality checks: ./gradlew qualityCheck"
-        println "   - Run SonarQube analysis: ./gradlew sonarqube"
-        println "   - Generate coverage: ./gradlew jacocoTestReport"
-        println "   - Fast build (no tests): ./gradlew fastBuild"
-    }
-    println "=================="
-}
-
-// Task dependencies for proper execution order
-jacocoTestReport {
-    mustRunAfter test
-}
-
-tasks.sonarqube {
-    mustRunAfter test, jacocoTestReport
-}
+tasks.sonar.mustRunAfter test, jacocoTestReport
