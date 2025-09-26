@@ -462,24 +462,7 @@ jobs:
           fi
 
   # -----------------------------
-  # 7. Post-deployment tests - FIXED
+  # 7. Post-deployment tests - REMOVED
   # -----------------------------
-  post-deployment-tests:
-    runs-on: ubuntu-latest
-    needs: deploy-production
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Run smoke tests
-        run: |
-          echo "Running post-deployment smoke tests..."
-          
-          # Basic health check with better error handling
-          if curl -f http://localhost:8081/actuator/health; then
-            echo "Health check passed!"
-          else
-            echo "Health check failed!"
-            exit 1
-          fi
-          
-          echo "All smoke tests passed!"
+  # Removed because the deploy-production job already includes proper health checks
+  # and the post-deployment tests were trying to connect to localhost which doesn't work in CI
