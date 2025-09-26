@@ -255,7 +255,7 @@ jobs:
       - name: Run SonarQube Analysis
         continue-on-error: true
         env:
-          SONAR_TOKEN: sqp_5f2d032a73f47121e80e17955a079c787f6bbd7e  # Use GitHub secret instead of hardcoded
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Use GitHub secret instead of hardcoded
           SONAR_HOST_URL: http://localhost:9000
         run: |
           echo "Running SonarQube analysis..."
@@ -328,7 +328,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: godfrey10
-          password: godfreygrace10
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Extract metadata
         id: meta
@@ -388,7 +388,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           username: godfrey10
-          password: godfreygrace10
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Deploy to Production
         run: |
