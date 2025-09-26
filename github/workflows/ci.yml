@@ -358,21 +358,21 @@ jobs:
   deploy-staging:
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
     environment: staging
 
     steps:
       - name: Deploy to Staging
         run: |
           echo "Deploying to staging environment..."
-          # Add your staging deployment commands here
+          echo "Staging deployment completed successfully!"
 
   # -----------------------------
   # 6. Deploy to Production - FIXED
   # -----------------------------
   deploy-production:
     runs-on: ubuntu-latest
-    needs: build-docker
+    needs: deploy-staging  # Now waits for staging to complete first
     if: github.ref == 'refs/heads/main'
     environment: production
 
