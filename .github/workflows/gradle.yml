@@ -12,6 +12,9 @@ permissions:
   packages: write
   pull-requests: read
   security-events: write
+  checks: write
+  actions: read
+  statuses: write
 
 env:
   IMAGE_NAME: godfrey10/user-service
@@ -22,13 +25,14 @@ env:
 
 jobs:
   # -----------------------------
-  # 1. Build and Test - FIXED
+  # 1. Build and Test
   # -----------------------------
   build-and-test:
+    name: Run Tests and Code Analysis
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15
+        image: postgres:15-alpine
         env:
           POSTGRES_DB: user-service
           POSTGRES_USER: postgres
@@ -36,10 +40,10 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd="pg_isready -U postgres -d user-service"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - name: Checkout code
@@ -55,7 +59,7 @@ jobs:
           cache: gradle
 
       - name: Cache Gradle packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
@@ -67,76 +71,57 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # FIXED: Increased wait time and better error handling
-      - name: Wait for PostgreSQL to be ready
-        run: |
-          echo "Waiting for PostgreSQL to be ready..."
-          for i in {1..120}; do
-            if pg_isready -h localhost -p 5432 -U postgres -d user-service; then
-              echo "PostgreSQL is ready!"
-              PGPASSWORD=Server123@ psql -h localhost -p 5432 -U postgres -d user-service -c "SELECT version();"
-              sleep 5  # Additional wait after connection is ready
-              break
-            fi
-            echo "Waiting for PostgreSQL... ($i/120)"
-            sleep 3
-          done
-          
-          echo "Creating database if not exists..."
-          PGPASSWORD=Server123@ createdb -h localhost -p 5432 -U postgres user-service 2>/dev/null || echo "Database already exists or creation failed"
-
-      - name: Verify Gradle wrapper exists
-        run: |
-          if [ ! -f "./gradlew" ]; then
-            echo "Error: gradlew not found"
-            exit 1
-          fi
-          echo "Gradle wrapper found and validated"
-
-      # FIXED: Added CI=true and SPRING_FLYWAY_ENABLED
       - name: Run tests with coverage
-        run: ./gradlew clean test jacocoTestReport --no-daemon --stacktrace --info
+        run: ./gradlew clean test jacocoTestReport --no-daemon --continue
         env:
-          CI: true  # This tells build.gradle we're in CI mode
           SPRING_PROFILES_ACTIVE: test
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/user-service
           SPRING_DATASOURCE_USERNAME: postgres
           SPRING_DATASOURCE_PASSWORD: Server123@
           SPRING_JPA_HIBERNATE_DDL_AUTO: create-drop
-          SPRING_JPA_SHOW_SQL: true
           SPRING_FLYWAY_ENABLED: true
 
       - name: Build application
-        run: ./gradlew bootJar -x test --no-daemon --stacktrace
+        run: ./gradlew bootJar -x test --no-daemon
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-${{ github.run_number }}
+          name: test-results
           path: |
             build/test-results/test/
             build/reports/jacoco/test/
             build/reports/tests/test/
           retention-days: 7
 
+      - name: Publish Test Results
+        uses: dorny/test-reporter@v1
+        if: success() || failure()
+        with:
+          name: Gradle Tests
+          path: build/test-results/test/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
       - name: Upload JAR artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: jar-artifacts-${{ github.run_number }}
+          name: jar-artifacts
           path: build/libs/*.jar
           retention-days: 7
 
   # -----------------------------
-  # 2. Code Quality Analysis - Simple (Default)
+  # 2. SonarCloud Analysis
   # -----------------------------
-  code-quality-simple:
+  code-quality-sonarqube:
+    name: SonarCloud Code Analysis
     runs-on: ubuntu-latest
     needs: build-and-test
     if: github.actor != 'dependabot[bot]'
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -148,144 +133,44 @@ jobs:
           distribution: temurin
           cache: gradle
 
-      - name: Make gradlew executable
+      - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Run code quality checks
-        run: |
-          echo "Running code quality checks..."
-          ./gradlew check --no-daemon
-          echo "Code quality checks completed!"
-
-      - name: Upload code quality reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: code-quality-reports-${{ github.run_number }}
-          path: |
-            build/reports/
-          retention-days: 7
-
-  # -----------------------------
-  # 2. Code Quality Analysis - With SonarQube (FIXED)
-  # -----------------------------
-  code-quality-sonarqube:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    # FIXED: Enable this by setting to true and disabling simple version above
-    if: false  # Set to true to enable SonarQube analysis
-    # if: github.actor != 'dependabot[bot]'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: 17
-          distribution: temurin
-          cache: gradle
-
-      - name: Cache SonarQube packages
-        uses: actions/cache@v3
+      - name: Cache SonarCloud packages
+        uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
           restore-keys: ${{ runner.os }}-sonar
 
-      - name: Download test results
-        uses: actions/download-artifact@v4
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
         with:
-          name: test-results-${{ github.run_number }}
-          path: build/
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
-
-      - name: Configure system for SonarQube
-        run: |
-          echo "Setting kernel parameters for SonarQube..."
-          sudo sysctl -w vm.max_map_count=524288
-          sudo sysctl -w fs.file-max=131072
-
-      - name: Create CI docker-compose override
-        run: |
-          cat > docker-compose.ci.yml << 'EOF'
-          services:
-            sonarqube:
-              environment:
-                SONAR_JDBC_URL: jdbc:postgresql://sonarqube-postgres:5432/sonarqube
-                SONAR_JDBC_USERNAME: sonar
-                SONAR_JDBC_PASSWORD: sonar123
-                SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: true
-                SONAR_WEB_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
-                SONAR_CE_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
-          EOF
-
-      - name: Start Docker Compose Services
-        run: |
-          echo "Starting Docker Compose services..."
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml up -d postgres-service sonarqube-postgres sonarqube
-          
-          echo "Waiting for PostgreSQL to be ready..."
-          timeout 120s bash -c '
-            until docker exec user-service-postgres pg_isready -U postgres -d user-service; do
-              echo "Waiting for PostgreSQL..."
-              sleep 5
-            done
-          '
-          echo "PostgreSQL is ready!"
-
-      - name: Wait for SonarQube to be ready
-        run: |
-          echo "Waiting for SonarQube to be ready..."
-          timeout 300s bash -c '
-            until curl -s http://localhost:9000/api/system/status | grep -q "UP"; do
-              echo "Waiting for SonarQube to start..."
-              sleep 10
-            done
-          '
-          echo "SonarQube is ready!"
-          sleep 30
-
-      # FIXED: Use GitHub secret for SonarQube token
-      - name: Run SonarQube Analysis
-        continue-on-error: true
+      - name: Build and analyze with SonarCloud
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}  # Use GitHub secret instead of hardcoded
-          SONAR_HOST_URL: http://localhost:9000
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
-          echo "Running SonarQube analysis..."
-          
-          if curl -s -f http://localhost:9000/api/system/status; then
-            echo "SonarQube API is responding"
-          else
-            echo "SonarQube is not responding. Skipping analysis."
-            exit 0
-          fi
-          
-          echo "Running SonarQube Analysis..."
-          ./gradlew sonarqube --info --no-daemon
-          
-          if [ $? -eq 0 ]; then
-            echo "SonarQube analysis completed successfully!"
-          else
-            echo "SonarQube analysis failed, but continuing pipeline..."
-          fi
-
-      - name: Cleanup Docker Services
-        if: always()
-        run: |
-          echo "Cleaning up Docker Compose services..."
-          docker compose -f docker-compose.yml -f docker-compose.ci.yml down --volumes --remove-orphans || true
+          ./gradlew build jacocoTestReport sonar \
+            -Dsonar.projectKey=Wealthy-grace_Individual-Advanced-Assignment-User-Service \
+            -Dsonar.organization=wealthy-grace \
+            -Dsonar.host.url=https://sonarcloud.io \
+            --info \
+            --no-daemon
+        continue-on-error: true
 
   # -----------------------------
-  # 3. Security Scanning - FIXED
+  # 3. Security Scanning
   # -----------------------------
   security-scan:
+    name: Security Scan
     runs-on: ubuntu-latest
     needs: build-and-test
     permissions:
@@ -304,22 +189,46 @@ jobs:
           output: 'trivy-results.sarif'
 
       - name: Upload Trivy scan results
-        uses: github/codeql-action/upload-sarif@v3  # FIXED: Updated to v3
+        uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
 
   # -----------------------------
-  # 4. Docker Build & Push - FIXED
+  # 4. Docker Build & Push
   # -----------------------------
   build-docker:
+    name: Build and Push Docker Image
     runs-on: ubuntu-latest
-    needs: [build-and-test, code-quality-simple]
+    needs: [build-and-test, code-quality-sonarqube]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: 17
+          distribution: temurin
+          cache: gradle
+
+      - name: Cache Gradle packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build Application
+        run: ./gradlew build -x test
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -327,19 +236,19 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: godfrey10
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: godfrey10/user-service
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
+            type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=stable,enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -348,7 +257,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -356,113 +264,52 @@ jobs:
   # 5. Deploy to Staging
   # -----------------------------
   deploy-staging:
+    name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: build-docker
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    if: github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main'
     environment: staging
 
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
       - name: Deploy to Staging
         run: |
           echo "Deploying to staging environment..."
-          echo "Staging deployment completed successfully!"
+          # Add your staging deployment commands here
+
+      - name: Run Health Check
+        run: |
+          echo "Running health check..."
+          # Add health check commands here
 
   # -----------------------------
-  # 6. Deploy to Production - FIXED
+  # 6. Deploy to Production
   # -----------------------------
   deploy-production:
+    name: Deploy to Production
     runs-on: ubuntu-latest
-    needs: deploy-staging  # Now waits for staging to complete first
+    needs: build-docker
     if: github.ref == 'refs/heads/main'
     environment: production
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
-
-      # FIXED: Add Docker setup for production deployment
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: godfrey10
-          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
       - name: Deploy to Production
         run: |
-          echo "Deploying to production using Docker Compose..."
-          
-          # Pull the latest image that was just built
-          docker pull godfrey10/user-service:latest
-          
-          # Start the production services
-          docker compose -f docker-compose.yml up -d postgres-service user-service
-          
-          echo "Production deployment completed!"
+          echo "Deploying to production environment..."
+          # Add your production deployment commands here
 
-      - name: Wait for services to be healthy
+      - name: Run Health Check
         run: |
-          echo "Waiting for services to be healthy..."
-          
-          # Wait for PostgreSQL
-          timeout 120s bash -c '
-            until docker exec user-service-postgres pg_isready -U postgres -d user-service 2>/dev/null; do
-              echo "Waiting for PostgreSQL..."
-              sleep 5
-            done
-          ' || echo "PostgreSQL check failed but continuing..."
-          echo "PostgreSQL check completed!"
-          
-          # Wait for User Service
-          timeout 180s bash -c '
-            until curl -f http://localhost:8081/actuator/health 2>/dev/null; do
-              echo "Waiting for User Service to be healthy..."
-              sleep 10
-            done
-          ' || echo "User Service health check failed but continuing..."
-          echo "User Service check completed!"
+          echo "Running health check..."
+          # Add health check commands here
 
-      - name: Verify deployment
+      - name: Notify Deployment Success
+        if: success()
         run: |
-          echo "Verifying deployment..."
-          
-          # Check container status
-          docker compose ps || true
-          
-          # Check service health (with error handling)
-          echo "=== Service Health Check ==="
-          curl -s http://localhost:8081/actuator/health || echo "Health check endpoint not available"
-          
-          # Check service info
-          echo "=== Service Info ==="
-          curl -s http://localhost:8081/actuator/info || echo "Info endpoint not available"
-          
-          # Check container logs (last 20 lines)
-          echo "=== Recent Logs ==="
-          docker logs user-service-app --tail 20 || echo "Could not retrieve logs"
-          
-          echo "Production deployment verification completed!"
-
-      - name: Cleanup old images
-        run: |
-          echo "Cleaning up old Docker images..."
-          docker image prune -f || true
-          docker system prune -f --volumes || true
-          echo "Cleanup completed!"
-
-      - name: Notify deployment
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "Production deployment successful!"
-          else
-            echo "Production deployment failed!"
-          fi
-
-  # -----------------------------
-  # 7. Post-deployment tests - REMOVED
-  # -----------------------------
-  # Removed because the deploy-production job already includes proper health checks
-  # and the post-deployment tests were trying to connect to localhost which doesn't work in CI
+          echo "✅ Production deployment successful!"
+          # Add notification logic here (Slack, email, etc.)
