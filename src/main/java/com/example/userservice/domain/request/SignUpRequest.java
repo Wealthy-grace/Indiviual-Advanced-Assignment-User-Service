@@ -51,7 +51,9 @@ public class SignUpRequest {
     @Size(max = 255, message = "Address cannot exceed 255 characters")
     private String address;
 
-    private Role role; // optional
+    private String role; // optional
+
+    //private String keycloakId;
 
     @NotBlank(message = "Image is required")
     @Size(max = 255, message = "Image cannot exceed 255 characters")

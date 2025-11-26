@@ -27,7 +27,9 @@ public class UserEntity {
 
     @Enumerated(EnumType.STRING)
     private Role role;
-
+    // ✅ ADD THIS FIELD
+    @Column(name = "keycloak_id")
+    private String keycloakId;
     private String image;
 
     public void setEnabled(boolean b) {

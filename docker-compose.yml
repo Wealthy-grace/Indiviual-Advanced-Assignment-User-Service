@@ -1,5 +1,413 @@
+### Optimized Docker Compose - Essential Services Only
+### Removed: Grafana, Prometheus, SonarQube (and their dependencies)
+### Kept: Keycloak + User Service (core functionality)
+##
+##services:
+##  # ==================== KEYCLOAK SERVICES ====================
+##
+##  # Keycloak PostgreSQL Database
+##  keycloak-postgres:
+##    image: postgres:15-alpine
+##    container_name: keycloak-postgres
+##    environment:
+##      POSTGRES_DB: keycloak
+##      POSTGRES_USER: keycloak
+##      POSTGRES_PASSWORD: keycloak123
+##    volumes:
+##      - keycloak_postgres_data:/var/lib/postgresql/data
+##    networks:
+##      - shared-microservices-network
+##    healthcheck:
+##      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+##      interval: 30s
+##      timeout: 10s
+##      retries: 3
+##      start_period: 40s
+##    restart: unless-stopped
+##
+##  # Keycloak Server
+##  keycloak:
+##    image: quay.io/keycloak/keycloak:23.0.0
+##    container_name: keycloak-server
+##    command: start-dev
+##    environment:
+##      KC_DB: postgres
+##      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+##      KC_DB_USERNAME: keycloak
+##      KC_DB_PASSWORD: keycloak123
+##      KC_HOSTNAME: localhost
+##      KC_HOSTNAME_PORT: 8090
+##      KC_HOSTNAME_STRICT: false
+##      KC_HOSTNAME_STRICT_HTTPS: false
+##      KC_LOG_LEVEL: info
+##      KC_METRICS_ENABLED: true
+##      KC_HEALTH_ENABLED: true
+##      KEYCLOAK_ADMIN: admin
+##      KEYCLOAK_ADMIN_PASSWORD: admin123
+##    ports:
+##      - "8090:8080"
+##    depends_on:
+##      keycloak-postgres:
+##        condition: service_healthy
+##    networks:
+##      - shared-microservices-network
+##    healthcheck:
+##      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"]
+##      interval: 10s
+##      timeout: 5s
+##      retries: 20
+##      start_period: 300s
+##    restart: unless-stopped
+##
+##  # ==================== USER SERVICE ====================
+##
+##  # User Service PostgreSQL Database
+##  postgres-service:
+##    image: postgres:15-alpine
+##    container_name: user-service-postgres
+##    environment:
+##      POSTGRES_DB: user-service
+##      POSTGRES_USER: postgres
+##      POSTGRES_PASSWORD: Server123@
+##    ports:
+##      - "5431:5432"
+##    volumes:
+##      - postgres_data:/var/lib/postgresql/data
+##    networks:
+##      - shared-microservices-network
+##    healthcheck:
+##      test: ["CMD-SHELL", "pg_isready -U postgres -d user-service"]
+##      interval: 30s
+##      timeout: 10s
+##      retries: 3
+##      start_period: 60s
+##    restart: unless-stopped
+##
+##  # User Service Application
+##  user-service:
+##    build:
+##      context: .
+##      dockerfile: Dockerfile
+##    image: godfrey10/user-service:latest
+##    container_name: user-service-app
+##    environment:
+##      # Database Configuration
+##      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-service:5432/user-service
+##      SPRING_DATASOURCE_USERNAME: postgres
+##      SPRING_DATASOURCE_PASSWORD: Server123@
+##      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+##
+##      # Application Configuration
+##      SPRING_APPLICATION_NAME: User-Service
+##      SERVER_PORT: 8081
+##      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: true
+##
+##      # JPA/Hibernate Configuration
+##      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+##      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+##      SPRING_JPA_SHOW_SQL: false
+##      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: true
+##
+##      # Flyway Configuration
+##      SPRING_FLYWAY_ENABLED: true
+##      SPRING_FLYWAY_LOCATIONS: classpath:db/migration
+##      SPRING_FLYWAY_BASELINE_ON_MIGRATE: true
+##      SPRING_FLYWAY_BASELINE_VERSION: 1.0
+##      SPRING_FLYWAY_OUT_OF_ORDER: true
+##      SPRING_FLYWAY_VALIDATE_ON_MIGRATE: true
+##
+##      # Keycloak OAuth2 Configuration
+##      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8090/realms/friendly-housing
+##      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/friendly-housing/protocol/openid-connect/certs
+##
+##      # Keycloak Admin Client Configuration
+##      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080
+##      KEYCLOAK_REALM: friendly-housing
+##      KEYCLOAK_RESOURCE: user-service
+##      KEYCLOAK_CREDENTIALS_SECRET: Lrf6ZwUcAqOnvg4fl89kKyiOLCaWDb6B
+##
+##      # Actuator/Monitoring Configuration (Basic health checks only)
+##      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+##      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+##
+##      # Logging Configuration (Reduced verbosity)
+##      LOGGING_LEVEL_ROOT: INFO
+##      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: INFO
+##      LOGGING_LEVEL_ORG_HIBERNATE_SQL: WARN
+##      LOGGING_LEVEL_ORG_FLYWAYDB_CORE: INFO
+##      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: INFO
+##      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: INFO
+##
+##      # Spring Cloud Configuration
+##      SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: false
+##    ports:
+##      - "8081:8081"
+##    depends_on:
+##      postgres-service:
+##        condition: service_healthy
+##      keycloak:
+##        condition: service_healthy
+##    networks:
+##      - shared-microservices-network
+##    extra_hosts:
+##      - "host.docker.internal:host-gateway"
+##    healthcheck:
+##      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+##      interval: 30s
+##      timeout: 10s
+##      retries: 5
+##      start_period: 120s
+##    restart: unless-stopped
+##
+##volumes:
+##  keycloak_postgres_data:
+##    driver: local
+##  postgres_data:
+##    driver: local
+##
+##networks:
+##  shared-microservices-network:
+##    external: true
+#
+#
+##    restart: unless-stopped
+#
+## Docker Compose - Uses Port 8091 for Keycloak
+## This allows it to run alongside Kubernetes (which uses 8090)
+#
+#services:
+#  # ==================== KEYCLOAK SERVICES ====================
+#
+#  # Keycloak PostgreSQL Database
+#  keycloak-postgres:
+#    image: postgres:15-alpine
+#    container_name: keycloak-postgres
+#    environment:
+#      POSTGRES_DB: keycloak
+#      POSTGRES_USER: keycloak
+#      POSTGRES_PASSWORD: keycloak123
+#    volumes:
+#      - keycloak_postgres_data:/var/lib/postgresql/data
+#    networks:
+#      - shared-microservices-network
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#      start_period: 40s
+#    restart: unless-stopped
+#
+#  # Keycloak Server - PORT CHANGED TO 8091
+#  keycloak:
+#    image: quay.io/keycloak/keycloak:23.0.0
+#    container_name: keycloak-server
+#    command: start-dev
+#    environment:
+#      KC_DB: postgres
+#      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+#      KC_DB_USERNAME: keycloak
+#      KC_DB_PASSWORD: keycloak123
+#      KC_HOSTNAME: localhost
+#      KC_HOSTNAME_PORT: 8091  # Changed from 8090
+#      KC_HOSTNAME_STRICT: false
+#      KC_HOSTNAME_STRICT_HTTPS: false
+#      KC_LOG_LEVEL: info
+#      KC_METRICS_ENABLED: true
+#      KC_HEALTH_ENABLED: true
+#      KEYCLOAK_ADMIN: admin
+#      KEYCLOAK_ADMIN_PASSWORD: admin123
+#    ports:
+#      - "8080:8080"  # Changed from 8090:8080
+#    depends_on:
+#      keycloak-postgres:
+#        condition: service_healthy
+#    networks:
+#      - shared-microservices-network
+#    healthcheck:
+#      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"]
+#      interval: 10s
+#      timeout: 5s
+#      retries: 20
+#      start_period: 300s
+#    restart: unless-stopped
+#
+#  # ==================== USER SERVICE ====================
+#
+#  # User Service PostgreSQL Database
+#  postgres-service:
+#    image: postgres:15-alpine
+#    container_name: user-service-postgres
+#    environment:
+#      POSTGRES_DB: user-service
+#      POSTGRES_USER: postgres
+#      POSTGRES_PASSWORD: Server123@
+#    ports:
+#      - "5431:5432"
+#    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+#    networks:
+#      - shared-microservices-network
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U postgres -d user-service"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 3
+#      start_period: 60s
+#    restart: unless-stopped
+#
+#  # User Service Application
+#  user-service:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    image: godfrey10/user-service:latest
+#    container_name: user-service-app
+#    environment:
+#      # Database Configuration
+#      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-service:5432/user-service
+#      SPRING_DATASOURCE_USERNAME: postgres
+#      SPRING_DATASOURCE_PASSWORD: Server123@
+#      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+#
+#      # Application Configuration
+#      SPRING_APPLICATION_NAME: User-Service
+#      SERVER_PORT: 8081
+#      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: true
+#
+#      # JPA/Hibernate Configuration
+#      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+#      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+#      SPRING_JPA_SHOW_SQL: false
+#      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: true
+#
+#      # Flyway Configuration
+#      SPRING_FLYWAY_ENABLED: true
+#      SPRING_FLYWAY_LOCATIONS: classpath:db/migration
+#      SPRING_FLYWAY_BASELINE_ON_MIGRATE: true
+#      SPRING_FLYWAY_BASELINE_VERSION: 1.0
+#      SPRING_FLYWAY_OUT_OF_ORDER: true
+#      SPRING_FLYWAY_VALIDATE_ON_MIGRATE: true
+#
+#      # Keycloak OAuth2 Configuration - UPDATED FOR PORT 8091
+#      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/friendly-housing
+#      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/friendly-housing/protocol/openid-connect/certs
+#
+#      # Keycloak Admin Client Configuration
+#      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080
+#      KEYCLOAK_REALM: friendly-housing
+#      KEYCLOAK_RESOURCE: user-service
+#      KEYCLOAK_CREDENTIALS_SECRET: JtVSo7F8eeF5HwUBESVtdlRfdRAP2vAY #Lrf6ZwUcAqOnvg4fl89kKyiOLCaWDb6B
+#
+#      # Actuator/Monitoring Configuration
+#      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
+#      MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+#
+#      # Logging Configuration
+#      LOGGING_LEVEL_ROOT: INFO
+#      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: INFO
+#      LOGGING_LEVEL_ORG_HIBERNATE_SQL: WARN
+#      LOGGING_LEVEL_ORG_FLYWAYDB_CORE: INFO
+#      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: INFO
+#      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: INFO
+#
+#      # Spring Cloud Configuration
+#      SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: false
+#    ports:
+#      - "8086:8081"  # Changed from 8081 to 8082 to avoid conflict with K8s
+#    depends_on:
+#      postgres-service:
+#        condition: service_healthy
+#      keycloak:
+#        condition: service_healthy
+#    networks:
+#      - shared-microservices-network
+#    extra_hosts:
+#      - "host.docker.internal:host-gateway"
+#    healthcheck:
+#      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+#      interval: 30s
+#      timeout: 10s
+#      retries: 5
+#      start_period: 120s
+#    restart: unless-stopped
+#
+#volumes:
+#  keycloak_postgres_data:
+#    driver: local
+#  postgres_data:
+#    driver: local
+#
+#networks:
+#  shared-microservices-network:
+#    external: true
+
+
+
+
+# user-service code
+
 services:
-  # PostgreSQL Database
+  # ==================== KEYCLOAK SERVICES ====================
+
+  # Keycloak PostgreSQL Database
+  keycloak-postgres:
+    image: postgres:15-alpine
+    container_name: keycloak-postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak123
+    volumes:
+      - keycloak_postgres_data:/var/lib/postgresql/data
+    networks:
+      - shared-microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak -d keycloak"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # Keycloak Server
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.0
+    container_name: keycloak-server
+    command: start-dev
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak-postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak123
+      KC_HOSTNAME: localhost
+      KC_HOSTNAME_PORT: 8080
+      KC_HOSTNAME_STRICT: false
+      KC_HOSTNAME_STRICT_HTTPS: false
+      KC_HTTP_ENABLED: true
+      KC_LOG_LEVEL: info
+      KC_METRICS_ENABLED: true
+      KC_HEALTH_ENABLED: true
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+    ports:
+      - "8080:8080"
+    depends_on:
+      keycloak-postgres:
+        condition: service_healthy
+    networks:
+      - shared-microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 10s bash -c ':> /dev/tcp/127.0.0.1/8080' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 300s
+    restart: unless-stopped
+
+  # ==================== USER SERVICE ====================
+
+  # User Service PostgreSQL Database
   postgres-service:
     image: postgres:15-alpine
     container_name: user-service-postgres
@@ -8,131 +416,101 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: Server123@
     ports:
-      - "5432:5432"
+      - "5431:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d/
     networks:
-      - user-service-network
+      - shared-microservices-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d user-service"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-
-  # SonarQube PostgreSQL Database
-  sonarqube-postgres:
-    image: postgres:15-alpine
-    container_name: sonarqube-postgres
-    environment:
-      POSTGRES_DB: sonarqube
-      POSTGRES_USER: sonar
-      POSTGRES_PASSWORD: sonar123
-    volumes:
-      - sonarqube_postgres_data:/var/lib/postgresql/data
-    networks:
-      - user-service-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sonar -d sonarqube"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
-  # SonarQube Server (CI/CD optimized)
-  sonarqube:
-    image: sonarqube:10.7.0-community
-    container_name: sonarqube-server
-    environment:
-      SONAR_JDBC_URL: jdbc:postgresql://sonarqube-postgres:5432/sonarqube
-      SONAR_JDBC_USERNAME: sonar
-      SONAR_JDBC_PASSWORD: sonar123
-      SONAR_ES_BOOTSTRAP_CHECKS_DISABLE: true
-      # Disable some checks for CI environment
-      SONAR_WEB_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
-      SONAR_CE_JAVAADDITIONALOPTS: "-Xmx512m -Xms128m"
-    ports:
-      - "9000:9000"
-    volumes:
-      - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_extensions:/opt/sonarqube/extensions
-      - sonarqube_logs:/opt/sonarqube/logs
-    depends_on:
-      sonarqube-postgres:
-        condition: service_healthy
-    networks:
-      - user-service-network
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9000/api/system/status || exit 1"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 180s
     restart: unless-stopped
-    ulimits:
-      nofile:
-        soft: 65536
-        hard: 65536
-    # Remove sysctls - these will be set at host level in CI
-    # sysctls:
-    #   - vm.max_map_count=524288
 
   # User Service Application
   user-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: godfrey10/user-service:latest
     container_name: user-service-app
     environment:
+      # Database Configuration
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-service:5432/user-service
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: Server123@
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+
+      # Application Configuration
       SPRING_APPLICATION_NAME: User-Service
       SERVER_PORT: 8081
+      SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: true
+
+      # JPA/Hibernate Configuration
       SPRING_JPA_HIBERNATE_DDL_AUTO: update
       SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+      SPRING_JPA_SHOW_SQL: false
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL: true
+
+      # Flyway Configuration
       SPRING_FLYWAY_ENABLED: true
       SPRING_FLYWAY_LOCATIONS: classpath:db/migration
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: true
       SPRING_FLYWAY_BASELINE_VERSION: 1.0
       SPRING_FLYWAY_OUT_OF_ORDER: true
       SPRING_FLYWAY_VALIDATE_ON_MIGRATE: true
-      SPRING_APP_JWT_SECRET: mySecretKey123912738aopsgjnspkmndfsopkvajoirjg94gf2opfng2moknm
-      SPRING_APP_JWT_EXPIRATION_MS: 3000000
-      LOGGING_LEVEL_ROOT: INFO
-      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: INFO
-      LOGGING_LEVEL_ORG_HIBERNATE_SQL: DEBUG
-      LOGGING_LEVEL_ORG_FLYWAYDB_CORE: INFO
-      LOGGING_LEVEL_COM_EXAMPLE_SPRINGSECURITYDEMO2025: DEBUG
-      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: DEBUG
+
+      # Keycloak OAuth2 Configuration
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://localhost:8080/realms/friendly-housing
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: http://keycloak:8080/realms/friendly-housing/protocol/openid-connect/certs
+
+      # Keycloak Admin Client Configuration
+      KEYCLOAK_AUTH_SERVER_URL: http://keycloak:8080
+      KEYCLOAK_REALM: friendly-housing
+      KEYCLOAK_RESOURCE: user-service
+      KEYCLOAK_CREDENTIALS_SECRET: w17mfIu8cNiHihx8hYZEHLkEkjEA1BIf
+
+      # Actuator/Monitoring Configuration
       MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,info
       MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: always
+
+      # Logging Configuration
+      LOGGING_LEVEL_ROOT: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK: INFO
+      LOGGING_LEVEL_ORG_HIBERNATE_SQL: WARN
+      LOGGING_LEVEL_ORG_FLYWAYDB_CORE: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: INFO
+      LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: INFO
+
+      # Spring Cloud Configuration
+      SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: false
     ports:
-      - "8081:8081"
+      - "8081:8081"  # CHANGED FROM 8086:8081
     depends_on:
       postgres-service:
         condition: service_healthy
+      keycloak:
+        condition: service_healthy
     networks:
-      - user-service-network
+      - shared-microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
       start_period: 120s
     restart: unless-stopped
 
 volumes:
+  keycloak_postgres_data:
+    driver: local
   postgres_data:
-    driver: local
-  sonarqube_postgres_data:
-    driver: local
-  sonarqube_data:
-    driver: local
-  sonarqube_extensions:
-    driver: local
-  sonarqube_logs:
     driver: local
 
 networks:
-  user-service-network:
-    driver: bridge
+  shared-microservices-network:
+    external: true

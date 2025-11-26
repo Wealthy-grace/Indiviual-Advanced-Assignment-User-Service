@@ -1,6 +1,7 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.5.6'
+   id 'org.springframework.boot' version '3.5.6'
+//    id 'org.springframework.boot' version '3.3.5'  // ✅ Latest stable Spring Boot
     id 'io.spring.dependency-management' version '1.1.7'
     id 'jacoco'
     id "org.sonarqube" version "5.1.0.4882"
@@ -26,7 +27,25 @@ repositories {
     mavenCentral()
 }
 
+//// ✅ Add Spring Cloud BOM
+//ext {
+//    set('springCloudVersion', "2024.0.0")
+//}
+
+ext {
+    // ✅ Spring Cloud version compatible with Spring Boot 3.3.x
+    set('springCloudVersion', "2023.0.3")
+}
+
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
 dependencies {
+    // ========== EXISTING DEPENDENCIES ==========
     // Spring Boot Starters
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
@@ -44,10 +63,30 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.flywaydb:flyway-core:latest.release'
 
-    // JWT
+    // JWT (you can keep this for backward compatibility or remove if only using Keycloak)
     implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+   runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
+    // ========== NEW: KEYCLOAK DEPENDENCIES ==========
+    // Keycloak Admin Client - for user management operations
+    implementation 'org.keycloak:keycloak-admin-client:23.0.0'
+// JAX-RS Client - REQUIRED
+    implementation 'org.jboss.resteasy:resteasy-client:6.2.6.Final'
+    implementation 'org.jboss.resteasy:resteasy-jackson2-provider:6.2.6.Final'
+
+    // Jakarta RS API - REQUIRED for Response class
+    implementation 'jakarta.ws.rs:jakarta.ws.rs-api:3.1.0'
+
+    // ✅ ADD THIS IF MISSING - Jakarta RS API
+    implementation 'jakarta.ws.rs:jakarta.ws.rs-api:3.1.0'
+
+    // Keycloak Spring Boot Starter (optional, but helpful)
+    implementation 'org.keycloak:keycloak-spring-boot-starter:23.0.7'
+
+    // JAX-RS Client (required by Keycloak Admin Client)
+    implementation 'org.jboss.resteasy:resteasy-client:6.2.6.Final'
+    implementation 'org.jboss.resteasy:resteasy-jackson2-provider:6.2.6.Final'
 
     // Lombok
     compileOnly 'org.projectlombok:lombok'
@@ -58,12 +97,36 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 
-    // Database for tests - Keep H2 for local development
+    // Database for tests
     testImplementation 'com.h2database:h2'
 
     // Additional test libraries
     testImplementation 'org.mockito:mockito-junit-jupiter'
     testImplementation 'org.assertj:assertj-core'
+
+    // ========== NEW: KEYCLOAK TEST DEPENDENCIES ==========
+    // Testcontainers for Keycloak integration tests (optional but recommended)
+    testImplementation 'org.testcontainers:testcontainers:1.19.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.19.3'
+    testImplementation 'org.testcontainers:postgresql:1.19.3'
+    testImplementation 'com.github.dasniko:testcontainers-keycloak:3.2.0'
+
+    // ✅ NEW: Resilience4J Circuit Breaker
+    implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+    implementation 'io.github.resilience4j:resilience4j-spring-boot3:2.1.0'
+
+    // ✅ NEW: Actuator for monitoring
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+
+    // ✅ NEW: Micrometer for metrics (optional but recommended)
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+}
+
+dependencyManagement {
+    imports {
+        // ✅ Spring Cloud version alignment
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
 }
 
 // FIXED: Environment-aware test configuration
@@ -261,7 +324,7 @@ sonarqube {
         property "sonar.projectName", "User Service"
         property "sonar.organization", "godfrey10"
         property "sonar.host.url", System.getenv("SONAR_HOST_URL") ?: "http://localhost:9000"
-        property "sonar.token", System.getenv("SONAR_TOKEN") ?: ""
+        property "sonar.token", System.getenv("SONAR_TOKEN") ?: "sqp_5f2d032a73f47121e80e17955a079c787f6bbd7e"
         property "sonar.coverage.jacoco.xmlReportPaths", "build/reports/jacoco/test/jacocoTestReport.xml"
         property "sonar.junit.reportPaths", "build/test-results/test"
         property "sonar.sourceEncoding", "UTF-8"

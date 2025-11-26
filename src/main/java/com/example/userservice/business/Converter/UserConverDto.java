@@ -21,7 +21,9 @@ public class UserConverDto {
                 .telephone(entity.getTelephone())
                 .address(entity.getAddress())
                 .password(passwordEncoder.encode(entity.getPassword()))
-                .role(String.valueOf(entity.getRole().name()))
+                .role(entity.getRole())
+                //.keycloakId(entity.getKeycloakId())
+                .address(entity.getAddress())
                 .image(entity.getImage())
                 .build();
     }
@@ -36,8 +38,9 @@ public class UserConverDto {
                 .telephone(dto.getTelephone())
                 .address(dto.getAddress())
                 .password(passwordEncoder.encode(dto.getPassword()))
-                .role(Role.valueOf(dto.getRole().name()))
-                //.role(Role.valueOf(dto.getRole()))
+                .role(Role.valueOf(dto.getRole()))
+                //.keycloakId(dto.getKeycloakId())
+                .role(Role.valueOf(String.valueOf(dto.getRole())))
                 .image(dto.getImage())
                 .build();
     }
