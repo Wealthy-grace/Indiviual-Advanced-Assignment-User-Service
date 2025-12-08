@@ -1,13 +1,309 @@
----
+
+
+
+##TODO UPDATE THIS WITH YOUR IMAGE
+#---
+#apiVersion: v1
+#kind: ConfigMap
+#metadata:
+#  name: user-service-config
+#  namespace: student-housing
+#data:
+#  SPRING_APPLICATION_NAME: "User-Service"
+#  SERVER_PORT: "8081"
+#  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/userdb"
+#  SPRING_DATASOURCE_USERNAME: "postgres"
+#  SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
+#  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+#  SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT: "org.hibernate.dialect.PostgreSQLDialect"
+#  SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
+#  SPRING_FLYWAY_ENABLED: "true"
+#  SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+#
+#  # HikariCP connection pool settings - FIXED: Increased pool size
+#  SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "30000"
+#  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "10"
+#  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "5"
+#  SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: "600000"
+#  SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: "1800000"
+#  SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD: "60000"
+#
+#  # Actuator configuration
+#  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
+#  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+#  MANAGEMENT_HEALTH_PROBES_ENABLED: "true"
+#  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ADD_ADDITIONAL_PATHS: "true"
+#  MANAGEMENT_ENDPOINTS_WEB_BASE_PATH: "/actuator"
+#  MANAGEMENT_SERVER_PORT: "8081"
+#
+#  # JWT Configuration - FIXED: Changed to accept localhost tokens
+#  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ENABLED: "true"
+#  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://localhost:8080/realms/friendly-housing"
+#  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak:8080/realms/friendly-housing/protocol/openid-connect/certs"
+#  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI_LAZY: "true"
+#
+#  # Keycloak Admin Client
+#  KEYCLOAK_AUTH_SERVER_URL: "http://keycloak:8080"
+#  KEYCLOAK_REALM: "friendly-housing"
+#  KEYCLOAK_RESOURCE: "user-service"
+#
+#  # Logging
+#  LOGGING_LEVEL_ROOT: "INFO"
+#  LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: "DEBUG"
+#  LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: "DEBUG"
+#  SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: "false"
+#
+#---
+#apiVersion: v1
+#kind: Secret
+#metadata:
+#  name: user-service-secret
+#  namespace: student-housing
+#type: Opaque
+#stringData:
+#  SPRING_DATASOURCE_PASSWORD: "Server123@"
+#  KEYCLOAK_CREDENTIALS_SECRET: "9Ri1X49Ybf4M5wzytzRwesusVFG2Fbtk"
+#
+#---
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name: postgres-pvc
+#  namespace: student-housing
+#spec:
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: 1Gi
+#
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: postgres
+#  namespace: student-housing
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: postgres
+#  template:
+#    metadata:
+#      labels:
+#        app: postgres
+#    spec:
+#      containers:
+#        - name: postgres
+#          image: postgres:15-alpine
+#          ports:
+#            - containerPort: 5432
+#          env:
+#            - name: POSTGRES_DB
+#              value: "userdb"
+#            - name: POSTGRES_USER
+#              value: "postgres"
+#            - name: POSTGRES_PASSWORD
+#              valueFrom:
+#                secretKeyRef:
+#                  name: user-service-secret
+#                  key: SPRING_DATASOURCE_PASSWORD
+#            - name: PGDATA
+#              value: /var/lib/postgresql/data/pgdata
+#          volumeMounts:
+#            - name: postgres-storage
+#              mountPath: /var/lib/postgresql/data
+#          resources:
+#            requests:
+#              memory: "256Mi"
+#              cpu: "200m"
+#            limits:
+#              memory: "512Mi"
+#              cpu: "500m"
+#          startupProbe:
+#            exec:
+#              command:
+#                - sh
+#                - -c
+#                - pg_isready -U postgres -d userdb
+#            initialDelaySeconds: 5
+#            periodSeconds: 5
+#            failureThreshold: 30
+#            timeoutSeconds: 3
+#          livenessProbe:
+#            exec:
+#              command:
+#                - sh
+#                - -c
+#                - pg_isready -U postgres -d userdb
+#            initialDelaySeconds: 30
+#            periodSeconds: 10
+#            timeoutSeconds: 3
+#            failureThreshold: 3
+#          readinessProbe:
+#            exec:
+#              command:
+#                - sh
+#                - -c
+#                - pg_isready -U postgres -d userdb
+#            initialDelaySeconds: 5
+#            periodSeconds: 5
+#            timeoutSeconds: 3
+#            failureThreshold: 3
+#      volumes:
+#        - name: postgres-storage
+#          persistentVolumeClaim:
+#            claimName: postgres-pvc
+#
+#---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: postgres
+#  namespace: student-housing
+#spec:
+#  ports:
+#    - port: 5432
+#      targetPort: 5432
+#  selector:
+#    app: postgres
+#  clusterIP: None
+#
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: user-service-app
+#  namespace: student-housing
+#spec:
+#  replicas: 1
+#  strategy:
+#    type: Recreate
+#  selector:
+#    matchLabels:
+#      app: user-service-app
+#  template:
+#    metadata:
+#      labels:
+#        app: user-service-app
+#    spec:
+#      initContainers:
+#        - name: wait-for-postgres
+#          image: busybox:1.36
+#          command:
+#            - sh
+#            - -c
+#            - |
+#              echo "Waiting for postgres to be ready..."
+#              until nc -z postgres 5432; do
+#                echo "Postgres not ready, waiting..."
+#                sleep 3
+#              done
+#              echo "Postgres is accessible, waiting for it to accept connections..."
+#              sleep 15
+#              echo "Ready to start user-service"
+#        - name: wait-for-keycloak
+#          image: busybox:1.36
+#          command:
+#            - sh
+#            - -c
+#            - |
+#              echo "Waiting for keycloak to be ready..."
+#              until nc -z keycloak 8080; do
+#                echo "Keycloak not ready, waiting..."
+#                sleep 3
+#              done
+#              echo "Keycloak is accessible"
+#              sleep 5
+#      containers:
+#        - name: user-service-app
+#          image: godfrey10/user-service:latest
+#          imagePullPolicy: Always
+#          ports:
+#            - containerPort: 8081
+#          envFrom:
+#            - configMapRef:
+#                name: user-service-config
+#          env:
+#            - name: SPRING_DATASOURCE_PASSWORD
+#              valueFrom:
+#                secretKeyRef:
+#                  name: user-service-secret
+#                  key: SPRING_DATASOURCE_PASSWORD
+#            - name: KEYCLOAK_CREDENTIALS_SECRET
+#              valueFrom:
+#                secretKeyRef:
+#                  name: user-service-secret
+#                  key: KEYCLOAK_CREDENTIALS_SECRET
+#          resources:
+#            requests:
+#              memory: "512Mi"
+#              cpu: "250m"
+#            limits:
+#              memory: "1Gi"
+#              cpu: "1000m"
+#          startupProbe:
+#            httpGet:
+#              path: /actuator/health/liveness
+#              port: 8081
+#            initialDelaySeconds: 60
+#            periodSeconds: 10
+#            failureThreshold: 30
+#            timeoutSeconds: 5
+#          livenessProbe:
+#            httpGet:
+#              path: /actuator/health/liveness
+#              port: 8081
+#            initialDelaySeconds: 30
+#            periodSeconds: 20
+#            failureThreshold: 3
+#            timeoutSeconds: 5
+#          readinessProbe:
+#            httpGet:
+#              path: /actuator/health/readiness
+#              port: 8081
+#            initialDelaySeconds: 60
+#            periodSeconds: 10
+#            failureThreshold: 3
+#            timeoutSeconds: 5
+#
+#---
+#apiVersion: v1
+#kind: Service
+#metadata:
+#  name: user-service-app
+#  namespace: student-housing
+#spec:
+#  type: NodePort
+#  ports:
+#    - port: 8081
+#      targetPort: 8081
+#      nodePort: 30081
+#  selector:
+#    app: user-service-app
+
+
+#TODO NEW USER SERVICE
+# ========================================================================
+# USER SERVICE - PRODUCTION READY DEPLOYMENT
+# ========================================================================
+# ========================================================================
+# USER SERVICE - PRODUCTION READY DEPLOYMENT
+# ========================================================================
+
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: user-service-config
   namespace: student-housing
 data:
+  # Active profile
+  SPRING_PROFILES_ACTIVE: "kubernetes"
   SPRING_APPLICATION_NAME: "User-Service"
   SERVER_PORT: "8081"
-  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/userdb"
+
+  # Database Configuration
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres.student-housing.svc.cluster.local:5432/userdb"
   SPRING_DATASOURCE_USERNAME: "postgres"
   SPRING_DATASOURCE_DRIVER_CLASS_NAME: "org.postgresql.Driver"
   SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
@@ -15,6 +311,14 @@ data:
   SPRING_MAIN_ALLOW_BEAN_DEFINITION_OVERRIDING: "true"
   SPRING_FLYWAY_ENABLED: "true"
   SPRING_FLYWAY_BASELINE_ON_MIGRATE: "true"
+
+  # HikariCP connection pool settings
+  SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "30000"
+  SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE: "10"
+  SPRING_DATASOURCE_HIKARI_MINIMUM_IDLE: "5"
+  SPRING_DATASOURCE_HIKARI_IDLE_TIMEOUT: "600000"
+  SPRING_DATASOURCE_HIKARI_MAX_LIFETIME: "1800000"
+  SPRING_DATASOURCE_HIKARI_LEAK_DETECTION_THRESHOLD: "60000"
 
   # Actuator configuration
   MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,metrics,prometheus"
@@ -24,22 +328,38 @@ data:
   MANAGEMENT_ENDPOINTS_WEB_BASE_PATH: "/actuator"
   MANAGEMENT_SERVER_PORT: "8081"
 
-  # PRODUCTION-READY: Connect to K8s Keycloak
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ENABLED: "true"
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://localhost:8080/realms/friendly-housing"
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak:8080/realms/friendly-housing/protocol/openid-connect/certs"
-  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI_LAZY: "true"
+  # ========================================================================
+  # JWT/OAuth2 Configuration - Using internal cluster DNS
+  # ========================================================================
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_ID: "user-service"
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_AUTHORIZATION_GRANT_TYPE: "authorization_code"
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_SCOPE: "openid,profile,email"
 
-  # Keycloak Admin Client - K8s Service
-  KEYCLOAK_AUTH_SERVER_URL: "http://keycloak:8080"
-  KEYCLOAK_REALM: "friendly-housing"
-  KEYCLOAK_RESOURCE: "user-service"
+  # Internal cluster communication
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_NAME_ATTRIBUTE: "preferred_username"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_AUTHORIZATION_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/auth"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/token"
+  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_INFO_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/userinfo"
+
+  # Resource server configuration
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ENABLED: "true"
+  # Accept tokens from both localhost (external) and cluster DNS (internal)
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://localhost:8080/realms/friendly-housing"
+  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/certs"
 
   # Logging
-  LOGGING_LEVEL_ROOT: "INFO"
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: "DEBUG"
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: "DEBUG"
-  SPRING_CLOUD_COMPATIBILITY_VERIFIER_ENABLED: "false"
+
+  # ========================================================================
+  # Keycloak Admin Client Configuration (for KeycloakUserService.java)
+  # ========================================================================
+  KEYCLOAK_AUTH_SERVER_URL: "http://keycloak.student-housing.svc.cluster.local:8080"
+  KEYCLOAK_REALM: "friendly-housing"
+  KEYCLOAK_RESOURCE: "user-service"
+  KEYCLOAK_ADMIN_CLIENT_ID: "user-service"
+  KEYCLOAK_ADMIN_REALM: "friendly-housing"
 
 ---
 apiVersion: v1
@@ -50,7 +370,9 @@ metadata:
 type: Opaque
 stringData:
   SPRING_DATASOURCE_PASSWORD: "Server123@"
-  KEYCLOAK_CREDENTIALS_SECRET: "ZhviiNajI1CWhQRcg1qF7lnoG1vL2PEY"   #"w17mfIu8cNiHihx8hYZEHLkEkjEA1BIf"
+  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
+  KEYCLOAK_ADMIN_CLIENT_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
+  KEYCLOAK_CREDENTIALS_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
 
 ---
 apiVersion: v1
@@ -80,6 +402,7 @@ spec:
     metadata:
       labels:
         app: postgres
+        version: v1
     spec:
       containers:
         - name: postgres
@@ -96,10 +419,11 @@ spec:
                 secretKeyRef:
                   name: user-service-secret
                   key: SPRING_DATASOURCE_PASSWORD
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
           volumeMounts:
             - name: postgres-storage
               mountPath: /var/lib/postgresql/data
-              subPath: postgres
           resources:
             requests:
               memory: "256Mi"
@@ -107,22 +431,36 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          startupProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U postgres -d userdb
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 30
+            timeoutSeconds: 3
           livenessProbe:
             exec:
               command:
-                - pg_isready
-                - -U
-                - postgres
+                - sh
+                - -c
+                - pg_isready -U postgres -d userdb
             initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             exec:
               command:
-                - pg_isready
-                - -U
-                - postgres
-            initialDelaySeconds: 10
+                - sh
+                - -c
+                - pg_isready -U postgres -d userdb
+            initialDelaySeconds: 5
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
       volumes:
         - name: postgres-storage
           persistentVolumeClaim:
@@ -135,8 +473,12 @@ metadata:
   name: postgres
   namespace: student-housing
 spec:
+  type: ClusterIP
   ports:
     - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgres
   selector:
     app: postgres
 
@@ -146,8 +488,15 @@ kind: Deployment
 metadata:
   name: user-service-app
   namespace: student-housing
+  labels:
+    app: user-service-app
 spec:
-  replicas: 2
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: user-service-app
@@ -155,49 +504,147 @@ spec:
     metadata:
       labels:
         app: user-service-app
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8081"
+        prometheus.io/path: "/actuator/prometheus"
     spec:
       initContainers:
+        # Wait for PostgreSQL
         - name: wait-for-postgres
-          image: busybox:1.35
-          command: ['sh', '-c', 'until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done;']
+          image: alpine:3.19
+          command:
+            - sh
+            - -c
+            - |
+              echo "Installing netcat..."
+              apk add --no-cache netcat-openbsd
+              echo "Waiting for PostgreSQL to be ready..."
+              max_attempts=60
+              attempt=0
+              until nc -z -v -w2 postgres.student-housing.svc.cluster.local 5432; do
+                if [ $attempt -ge $max_attempts ]; then
+                  echo "ERROR: PostgreSQL not ready after $max_attempts attempts"
+                  exit 1
+                fi
+                echo "PostgreSQL is unavailable - sleeping (attempt $attempt/$max_attempts)"
+                sleep 3
+                attempt=$((attempt + 1))
+              done
+              echo "PostgreSQL is up - waiting 5 seconds for full initialization"
+              sleep 5
+              echo "PostgreSQL ready!"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
 
+        # Wait for Keycloak
         - name: wait-for-keycloak
-          image: busybox:1.35
-          command: ['sh', '-c', 'until nc -z keycloak 8080; do echo waiting for keycloak; sleep 2; done;']
+          image: alpine:3.19
+          command:
+            - sh
+            - -c
+            - |
+              echo "Installing curl..."
+              apk add --no-cache curl
+              echo "Waiting for Keycloak to be ready..."
+              max_attempts=60
+              attempt=0
+              until curl -sf -m 5 http://keycloak.student-housing.svc.cluster.local:8080/health/ready > /dev/null 2>&1; do
+                if [ $attempt -ge $max_attempts ]; then
+                  echo "WARNING: Keycloak not ready after $max_attempts attempts, continuing anyway"
+                  break
+                fi
+                echo "Keycloak is unavailable - sleeping (attempt $attempt/$max_attempts)"
+                sleep 3
+                attempt=$((attempt + 1))
+              done
+              if [ $attempt -lt $max_attempts ]; then
+                echo "Keycloak is up - waiting 10 seconds for full initialization"
+                sleep 10
+              fi
+              echo "Keycloak check completed!"
+          resources:
+            limits:
+              cpu: 50m
+              memory: 64Mi
+            requests:
+              cpu: 10m
+              memory: 32Mi
 
       containers:
         - name: user-service-app
           image: godfrey10/user-service:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
-            - containerPort: 8081
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+
+          # Volume mounts for logs and temp files
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+            - name: tmp
+              mountPath: /tmp
+
           envFrom:
             - configMapRef:
                 name: user-service-config
+
           env:
             - name: SPRING_DATASOURCE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: user-service-secret
                   key: SPRING_DATASOURCE_PASSWORD
+            - name: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: user-service-secret
+                  key: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET
+            - name: KEYCLOAK_ADMIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: user-service-secret
+                  key: KEYCLOAK_ADMIN_CLIENT_SECRET
             - name: KEYCLOAK_CREDENTIALS_SECRET
               valueFrom:
                 secretKeyRef:
                   name: user-service-secret
                   key: KEYCLOAK_CREDENTIALS_SECRET
+            # Pod metadata for distributed tracing
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+
           resources:
             requests:
               memory: "512Mi"
               cpu: "250m"
             limits:
               memory: "1Gi"
-              cpu: "500m"
+              cpu: "1000m"
 
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8081
-            initialDelaySeconds: 60
+              port: http
+            initialDelaySeconds: 90
             periodSeconds: 10
             failureThreshold: 30
             timeoutSeconds: 5
@@ -205,20 +652,27 @@ spec:
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: 8081
-            initialDelaySeconds: 10
-            periodSeconds: 15
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
             failureThreshold: 3
             timeoutSeconds: 5
 
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: 8081
-            initialDelaySeconds: 10
+              port: http
+            initialDelaySeconds: 90
             periodSeconds: 10
             failureThreshold: 3
             timeoutSeconds: 5
+
+      # Define volumes
+      volumes:
+        - name: logs
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
 
 ---
 apiVersion: v1
@@ -226,32 +680,46 @@ kind: Service
 metadata:
   name: user-service-app
   namespace: student-housing
+  labels:
+    app: user-service-app
 spec:
-  type: NodePort
+  type: ClusterIP
   ports:
     - port: 8081
-      targetPort: 8081
-      nodePort: 30081
+      targetPort: http
+      protocol: TCP
+      name: http
   selector:
     app: user-service-app
 
 ---
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
+apiVersion: v1
+kind: Service
 metadata:
-  name: user-service-hpa
+  name: user-service-app-nodeport
+  namespace: student-housing
+  labels:
+    app: user-service-app
+spec:
+  type: NodePort
+  ports:
+    - port: 8081
+      targetPort: http
+      nodePort: 30081
+      protocol: TCP
+      name: http
+  selector:
+    app: user-service-app
+
+---
+# Pod Disruption Budget (Optional - for production resilience)
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: user-service-pdb
   namespace: student-housing
 spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: user-service-app
-  minReplicas: 2
-  maxReplicas: 5
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 70
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: user-service-app
