@@ -655,7 +655,7 @@ spec:
   ports:
     - port: 8081
       targetPort: http
-      nodePort: 30081
+      #nodePort: 30081
       protocol: TCP
       name: http
   selector:
