@@ -284,11 +284,7 @@
 
 
 #TODO NEW USER SERVICE
-# ========================================================================
-# USER SERVICE - PRODUCTION READY DEPLOYMENT
-# ========================================================================
-# ========================================================================
-# USER SERVICE - PRODUCTION READY DEPLOYMENT
+# USER SERVICE - RESOURCE SERVER ONLY (NO CLIENT CONFIG)
 # ========================================================================
 
 apiVersion: v1
@@ -329,28 +325,21 @@ data:
   MANAGEMENT_SERVER_PORT: "8081"
 
   # ========================================================================
-  # JWT/OAuth2 Configuration - Using internal cluster DNS
+  # JWT/OAuth2 RESOURCE SERVER ONLY - No Client Configuration
   # ========================================================================
-  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_ID: "user-service"
-  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_AUTHORIZATION_GRANT_TYPE: "authorization_code"
-  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_SCOPE: "openid,profile,email"
-
-  # Internal cluster communication
-  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_ISSUER_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing"
-  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_NAME_ATTRIBUTE: "preferred_username"
-  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_AUTHORIZATION_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/auth"
-  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_TOKEN_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/token"
-  SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_KEYCLOAK_USER_INFO_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/userinfo"
-
-  # Resource server configuration
+  # Resource server configuration for JWT validation
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ENABLED: "true"
-  # Accept tokens from both localhost (external) and cluster DNS (internal)
+  # Accept tokens from localhost (external issuer)
+  # KEPT - Only Resource Server for JWT validation
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://localhost:8080/realms/friendly-housing"
   SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/certs"
+  # Use cluster DNS for JWK set retrieval
+#  SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: "http://keycloak.student-housing.svc.cluster.local:8080/realms/friendly-housing/protocol/openid-connect/certs"
 
   # Logging
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY: "DEBUG"
   LOGGING_LEVEL_ORG_SPRINGFRAMEWORK_SECURITY_OAUTH2: "DEBUG"
+  LOGGING_LEVEL_ROOT: "INFO"
 
   # ========================================================================
   # Keycloak Admin Client Configuration (for KeycloakUserService.java)
@@ -370,7 +359,6 @@ metadata:
 type: Opaque
 stringData:
   SPRING_DATASOURCE_PASSWORD: "Server123@"
-  SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
   KEYCLOAK_ADMIN_CLIENT_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
   KEYCLOAK_CREDENTIALS_SECRET: "FbtQ0WYg09MgcbhHFufNXWM3YmuscLJI"
 
@@ -511,7 +499,7 @@ spec:
         prometheus.io/path: "/actuator/prometheus"
     spec:
       initContainers:
-        # Wait for PostgreSQL
+        # Wait for PostgreSQL only - no Keycloak dependency
         - name: wait-for-postgres
           image: alpine:3.19
           command:
@@ -543,40 +531,6 @@ spec:
               cpu: 10m
               memory: 32Mi
 
-        # Wait for Keycloak
-        - name: wait-for-keycloak
-          image: alpine:3.19
-          command:
-            - sh
-            - -c
-            - |
-              echo "Installing curl..."
-              apk add --no-cache curl
-              echo "Waiting for Keycloak to be ready..."
-              max_attempts=60
-              attempt=0
-              until curl -sf -m 5 http://keycloak.student-housing.svc.cluster.local:8080/health/ready > /dev/null 2>&1; do
-                if [ $attempt -ge $max_attempts ]; then
-                  echo "WARNING: Keycloak not ready after $max_attempts attempts, continuing anyway"
-                  break
-                fi
-                echo "Keycloak is unavailable - sleeping (attempt $attempt/$max_attempts)"
-                sleep 3
-                attempt=$((attempt + 1))
-              done
-              if [ $attempt -lt $max_attempts ]; then
-                echo "Keycloak is up - waiting 10 seconds for full initialization"
-                sleep 10
-              fi
-              echo "Keycloak check completed!"
-          resources:
-            limits:
-              cpu: 50m
-              memory: 64Mi
-            requests:
-              cpu: 10m
-              memory: 32Mi
-
       containers:
         - name: user-service-app
           image: godfrey10/user-service:latest
@@ -586,7 +540,6 @@ spec:
               containerPort: 8081
               protocol: TCP
 
-          # Volume mounts for logs and temp files
           volumeMounts:
             - name: logs
               mountPath: /app/logs
@@ -603,11 +556,6 @@ spec:
                 secretKeyRef:
                   name: user-service-secret
                   key: SPRING_DATASOURCE_PASSWORD
-            - name: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: user-service-secret
-                  key: SPRING_SECURITY_OAUTH2_CLIENT_REGISTRATION_KEYCLOAK_CLIENT_SECRET
             - name: KEYCLOAK_ADMIN_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -618,7 +566,7 @@ spec:
                 secretKeyRef:
                   name: user-service-secret
                   key: KEYCLOAK_CREDENTIALS_SECRET
-            # Pod metadata for distributed tracing
+            # Pod metadata
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -631,6 +579,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
+            # Java memory settings
+            - name: JAVA_OPTS
+              value: "-Xms256m -Xmx768m -XX:MaxMetaspaceSize=256m"
 
           resources:
             requests:
@@ -644,7 +595,7 @@ spec:
             httpGet:
               path: /actuator/health/liveness
               port: http
-            initialDelaySeconds: 90
+            initialDelaySeconds: 60
             periodSeconds: 10
             failureThreshold: 30
             timeoutSeconds: 5
@@ -662,12 +613,11 @@ spec:
             httpGet:
               path: /actuator/health/readiness
               port: http
-            initialDelaySeconds: 90
+            initialDelaySeconds: 60
             periodSeconds: 10
             failureThreshold: 3
             timeoutSeconds: 5
 
-      # Define volumes
       volumes:
         - name: logs
           emptyDir: {}
@@ -712,7 +662,6 @@ spec:
     app: user-service-app
 
 ---
-# Pod Disruption Budget (Optional - for production resilience)
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
